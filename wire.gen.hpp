@@ -6,7 +6,7 @@ namespace qui {
 
 namespace wire {
 
-inline constexpr uint8_t kVersion = 1;
+inline constexpr uint8_t kVersion = 2;
 inline constexpr int kThemeCount = 4;
 inline constexpr int kTokenCount = 19;
 
@@ -46,6 +46,10 @@ enum Op : uint8_t {
   OpSrc = 32,
   OpUniform = 33,
   OpFps = 34,
+  OpPlaceholder = 35,
+  OpMultiline = 36,
+  OpPassword = 37,
+  OpFocus = 38,
 };
 
 enum Kind : uint8_t {
@@ -54,6 +58,7 @@ enum Kind : uint8_t {
   KindButton = 2,
   KindList = 3,
   KindShader = 4,
+  KindInput = 5,
 };
 
 enum Dir : uint8_t {
@@ -78,6 +83,8 @@ enum Flag : uint32_t {
   FlagDragStart = 32,
   FlagDragging = 64,
   FlagDragEnd = 128,
+  FlagChanged = 256,
+  FlagSubmitted = 512,
 };
 
 enum Token : uint8_t {
@@ -148,5 +155,37 @@ inline constexpr uint32_t Scrollbar = 16u << 24;
 inline constexpr uint32_t ScrollbarHot = 17u << 24;
 inline constexpr uint32_t Scrim = 18u << 24;
 inline constexpr uint32_t Shadow = 19u << 24;
+
+inline constexpr uint32_t KeyBackspace = 8;
+inline constexpr uint32_t KeyTab = 9;
+inline constexpr uint32_t KeyEnter = 13;
+inline constexpr uint32_t KeyEscape = 27;
+inline constexpr uint32_t KeySpace = 32;
+inline constexpr uint32_t KeyDelete = 127;
+inline constexpr uint32_t KeyLeft = 1000;
+inline constexpr uint32_t KeyRight = 1001;
+inline constexpr uint32_t KeyUp = 1002;
+inline constexpr uint32_t KeyDown = 1003;
+inline constexpr uint32_t KeyHome = 1004;
+inline constexpr uint32_t KeyEnd = 1005;
+inline constexpr uint32_t KeyPageUp = 1006;
+inline constexpr uint32_t KeyPageDown = 1007;
+inline constexpr uint32_t KeyF1 = 1011;
+inline constexpr uint32_t KeyF2 = 1012;
+inline constexpr uint32_t KeyF3 = 1013;
+inline constexpr uint32_t KeyF4 = 1014;
+inline constexpr uint32_t KeyF5 = 1015;
+inline constexpr uint32_t KeyF6 = 1016;
+inline constexpr uint32_t KeyF7 = 1017;
+inline constexpr uint32_t KeyF8 = 1018;
+inline constexpr uint32_t KeyF9 = 1019;
+inline constexpr uint32_t KeyF10 = 1020;
+inline constexpr uint32_t KeyF11 = 1021;
+inline constexpr uint32_t KeyF12 = 1022;
+
+inline constexpr uint32_t ModShift = 1;
+inline constexpr uint32_t ModCtrl = 2;
+inline constexpr uint32_t ModAlt = 4;
+inline constexpr uint32_t ModMeta = 8;
 
 }  // namespace qui

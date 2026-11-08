@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 
 namespace qui {
 
@@ -89,11 +90,9 @@ float clamp_size(float value, const float min_value, const float max_value) {
   return std::max(value, min_value);
 }
 
-float line_height_for(float size) { return std::ceil(size * 1.4f); }
-
-constexpr float kDefaultFontSize = 14;
 constexpr float kOverscan = 200;
 constexpr float kDefaultRange = 32;
+constexpr float kInputWidth = 200;
 
 template <class F>
 void each_child(std::vector<Node> &nodes, const Node &node, F &&visit) {
@@ -198,6 +197,16 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         node.align = node.justify = Center;
         node.hit = 1;
       }
+      if (node.kind == KindInput) {
+        node.pad[0] = node.pad[2] = 6;
+        node.pad[1] = node.pad[3] = 10;
+        node.radius = 6;
+        node.bg = Inset;
+        node.border = Line;
+        node.border_w = 1;
+        node.align = Center;
+        node.hit = 1;
+      }
       if (node.kind == KindList) node.clip = true;
       const auto index = static_cast<int32_t>(nodes.size());
       Node &parent = nodes[node.parent];
@@ -267,6 +276,13 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpItem: node.item = in.read<uint32_t>(); break;
       case OpSrc: node.src = in.str(); break;
       case OpFps: node.fps = in.read<float>(); break;
+      case OpPlaceholder: node.placeholder = in.str(); break;
+      case OpMultiline:
+        node.multiline = in.read<uint8_t>();
+        node.align = Start;
+        break;
+      case OpPassword: node.password = true; break;
+      case OpFocus: node.focus_mode = in.read<uint8_t>(); break;
       case OpUniform: {
         UniformRef uniform;
         uniform.name = in.bytes(in.read<uint8_t>());
@@ -312,7 +328,10 @@ uint32_t Engine::resolve(uint32_t color) const {
 void Engine::intrinsic_width(Node &node) {
   const float pad_x = node.pad[1] + node.pad[3];
   float content = 0;
-  if (is_text_leaf(node)) {
+  if (node.kind == KindInput) {
+    node.font = font_for(node);
+    content = kInputWidth;
+  } else if (is_text_leaf(node)) {
     node.font = font_for(node);
     std::string_view rest = node.text;
     for (;;) {
@@ -391,16 +410,18 @@ void Engine::distribute_width(Node &node) {
 
 void Engine::wrap(Node &node, float inner_width) {
   node.line_first = static_cast<uint32_t>(lines.size());
-  const float limit = inner_width * dpr;
+  const float limit = node.kind == KindInput && !node.multiline ? std::numeric_limits<float>::infinity() : inner_width * dpr;
   std::string_view rest = node.text;
+  uint32_t para_byte = 0;
   for (;;) {
     const size_t nl = rest.find('\n');
     const std::string_view para = rest.substr(0, nl);
     const ShapedLine &shaped = shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, true});
     const auto count = static_cast<uint32_t>(shaped.glyphs.size());
+    const uint32_t para_end = para_byte + static_cast<uint32_t>(para.size());
 
     if (node.ellipsis || shaped.total_advance <= limit + 0.5f || count == 0) {
-      TextLine line{&shaped, 0, count, shaped.total_advance, false};
+      TextLine line{&shaped, 0, count, shaped.total_advance, false, para_byte, para_byte, para_end};
       if (node.ellipsis && shaped.total_advance > limit + 0.5f) {
         const ShapedLine &dots = shaper.shape_line_single("\xe2\x80\xa6", {}, {node.font, 0xffffffffu, true});
         const float room = std::max(0.f, limit - dots.total_advance);
@@ -430,13 +451,17 @@ void Engine::wrap(Node &node, float inner_width) {
         const float width = visible > start
                                 ? shaped.glyphs[visible - 1].x + shaped.glyphs[visible - 1].x_advance - origin
                                 : 0;
-        lines.push_back({&shaped, start, visible, width, false});
+        const uint32_t line_first = start;
+        const uint32_t line_start = para_byte + shaped.glyphs[line_first].cluster_start_byte;
         start = end;
         while (start < count && para[shaped.glyphs[start].cluster_start_byte] == ' ') ++start;
+        const uint32_t line_end = start < count ? para_byte + shaped.glyphs[start].cluster_start_byte : para_end;
+        lines.push_back({&shaped, line_first, visible, width, false, para_byte, line_start, line_end});
       }
     }
     if (node.ellipsis || nl == std::string_view::npos) break;
     rest.remove_prefix(nl + 1);
+    para_byte = para_end + 1;
   }
   node.line_count = static_cast<uint32_t>(lines.size()) - node.line_first;
 }
@@ -444,7 +469,7 @@ void Engine::wrap(Node &node, float inner_width) {
 void Engine::intrinsic_height(Node &node) {
   const float pad_y = node.pad[0] + node.pad[2];
   float content = 0;
-  if (is_text_leaf(node)) {
+  if (is_text_leaf(node) || node.kind == KindInput) {
     wrap(node, std::max(0.f, node.w - node.pad[1] - node.pad[3]));
     const float size = node.font_size > 0 ? node.font_size : kDefaultFontSize;
     content = line_height_for(size) * static_cast<float>(node.line_count);
@@ -699,6 +724,8 @@ void Engine::layout(float width, float height, float scale) {
   root.h = height;
 
   const int count = static_cast<int>(nodes.size());
+  for (int i = 0; i < count; ++i)
+    if (nodes[static_cast<size_t>(i)].kind == KindInput) sync_input(nodes[static_cast<size_t>(i)], i);
   for (int i = count - 1; i >= 0; --i) intrinsic_width(nodes[static_cast<size_t>(i)]);
   for (int i = 0; i < count; ++i) distribute_width(nodes[static_cast<size_t>(i)]);
   for (int i = count - 1; i >= 0; --i) intrinsic_height(nodes[static_cast<size_t>(i)]);
@@ -712,6 +739,7 @@ void Engine::prune() {
   const auto stale = [&](uint64_t frame_seen) { return frame_number - frame_seen > 600; };
   std::erase_if(lists, [&](const auto &kv) { return stale(kv.second.frame); });
   std::erase_if(scrolls, [&](const auto &kv) { return stale(kv.second.frame); });
+  std::erase_if(inputs, [&](const auto &kv) { return stale(kv.second.frame); });
 }
 
 void Engine::add_instance(const Instance &instance, int page, IRect clip) {
@@ -739,13 +767,13 @@ void Engine::add_rect(float x, float y, float w, float h, uint32_t color, float 
   add_instance(instance, -1, clip);
 }
 
-void Engine::paint_text(const Node &node, float opacity, IRect clip) {
+void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, float dy, uint32_t color_override) {
   const float size = node.font_size > 0 ? node.font_size : kDefaultFontSize;
   const float line_height = line_height_for(size) * dpr;
   const FontMetrics *metrics = fonts.metrics(node.font);
   if (!metrics) return;
 
-  uint32_t color = resolve(node.fg ? node.fg : Ink);
+  uint32_t color = resolve(color_override ? color_override : node.fg ? node.fg : static_cast<uint32_t>(Ink));
   const auto alpha = static_cast<uint32_t>(static_cast<float>(color & 0xffu) * opacity + 0.5f);
   color = (color & 0xffffff00u) | std::min(alpha, 255u);
   const uint32_t rgba = __builtin_bswap32(color);
@@ -754,7 +782,7 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip) {
   const float inner_h = (node.h - node.pad[0] - node.pad[2]) * dpr;
   const float text_h = line_height * static_cast<float>(node.line_count);
   const float free_h = inner_h - text_h;
-  float y = (node.y + node.pad[0]) * dpr + (node.align == Center ? free_h / 2 : node.align == End ? free_h : 0);
+  float y = (node.y + node.pad[0]) * dpr + dy + (node.align == Center ? free_h / 2 : node.align == End ? free_h : 0);
 
   const float ink = metrics->ascender - metrics->descender;
   const auto emit = [&](const ShapedGlyph &g, float origin) {
@@ -783,7 +811,7 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip) {
   for (uint32_t i = 0; i < node.line_count; ++i) {
     const TextLine &line = lines[node.line_first + i];
     const float free_w = inner_w - line.width;
-    const float x = (node.x + node.pad[3]) * dpr + (node.justify == Center ? free_w / 2 : node.justify == End ? free_w : 0);
+    const float x = (node.x + node.pad[3]) * dpr + dx + (node.justify == Center ? free_w / 2 : node.justify == End ? free_w : 0);
     const float origin = line.first < line.shaped->glyphs.size() ? line.shaped->glyphs[line.first].x : 0;
     float end = x;
     for (uint32_t g = line.first; g < line.last; ++g) {
@@ -799,8 +827,9 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip) {
   }
 }
 
-void Engine::paint_node(int index, float opacity, IRect clip, uint64_t hovered, uint64_t pressed) {
+void Engine::paint_node(int index, float opacity, IRect clip) {
   const Node &node = nodes[static_cast<size_t>(index)];
+  const uint64_t hovered = ui.hovered, pressed = ui.pressed;
   const float alpha = opacity * node.opacity;
 
   const auto snap = [&](float v) { return std::round(v * dpr); };
@@ -827,7 +856,8 @@ void Engine::paint_node(int index, float opacity, IRect clip, uint64_t hovered, 
     hit.cx1 = static_cast<float>(clip.x + clip.w) / dpr;
     hit.cy1 = static_cast<float>(clip.y + clip.h) / dpr;
     hit.press = node.hit != 0;
-    hit.scroll = node.scroll || node.kind == KindList;
+    hit.scroll = node.scroll || node.kind == KindList || (node.kind == KindInput && node.multiline);
+    hit.focusable = node.kind == KindButton || node.kind == KindInput;
     hits.push_back(hit);
   }
 
@@ -865,15 +895,20 @@ void Engine::paint_node(int index, float opacity, IRect clip, uint64_t hovered, 
     add_rect(x0, y0, w, h, fade(tint), radius, 0, clip);
   }
   if (node.border && node.border_w > 0) {
-    add_rect(x0, y0, w, h, fade(resolve(node.border)), radius, std::max(1.f, std::round(node.border_w * dpr)), clip);
+    const uint32_t border = node.kind == KindInput && node.id == ui.focused ? static_cast<uint32_t>(Accent) : node.border;
+    add_rect(x0, y0, w, h, fade(resolve(border)), radius, std::max(1.f, std::round(node.border_w * dpr)), clip);
+  }
+  if (node.kind == KindButton && node.id == ui.focused && ui.focus_ring) {
+    add_rect(x0, y0, w, h, fade(resolve(Accent)), radius, std::round(2 * dpr), clip);
   }
 
   if (is_text_leaf(node)) paint_text(node, alpha, clip);
+  if (node.kind == KindInput) paint_input(node, alpha, clip);
 
   IRect child_clip = clip;
   if (node.clip) child_clip = intersect(clip, bounds);
   for (int32_t c = node.first_child; c >= 0; c = nodes[static_cast<size_t>(c)].next_sibling)
-    paint_node(c, alpha, child_clip, hovered, pressed);
+    paint_node(c, alpha, child_clip);
 
   const auto scrollbar = [&](float position, float fraction) {
     if (fraction >= 1) return;
@@ -906,7 +941,7 @@ void Engine::paint_node(int index, float opacity, IRect clip, uint64_t hovered, 
   }
 }
 
-void Engine::paint(uint64_t hovered, uint64_t pressed) {
+void Engine::paint() {
   frame.instances.clear();
   frame.batches.clear();
   frame.shaders.clear();
@@ -914,7 +949,7 @@ void Engine::paint(uint64_t hovered, uint64_t pressed) {
   frame.width = static_cast<int>(std::round(nodes[0].w * dpr));
   frame.height = static_cast<int>(std::round(nodes[0].h * dpr));
   frame.clear = kThemes[theme][TokenBackground];
-  paint_node(0, 1, IRect{0, 0, frame.width, frame.height}, hovered, pressed);
+  paint_node(0, 1, IRect{0, 0, frame.width, frame.height});
 }
 
 IRect Engine::swap_and_damage() {
@@ -973,15 +1008,23 @@ std::string Engine::tree_json() const {
     }
     return escaped;
   };
-  static const char *const kinds[] = {"box", "text", "button", "list", "shader"};
+  static const char *const kinds[] = {"box", "text", "button", "list", "shader", "input"};
   for (size_t i = 1; i < nodes.size(); ++i) {
     const Node &n = nodes[i];
     char buffer[256];
     std::snprintf(buffer, sizeof(buffer), "%s{\"id\":\"%016llx\",\"parent\":%d,\"kind\":\"%s\",\"x\":%.1f,\"y\":%.1f,\"w\":%.1f,\"h\":%.1f",
-                  first ? "" : ",", static_cast<unsigned long long>(n.id), n.parent, kinds[n.kind < 5 ? n.kind : 0], n.x, n.y, n.w, n.h);
+                  first ? "" : ",", static_cast<unsigned long long>(n.id), n.parent, kinds[n.kind < 6 ? n.kind : 0], n.x, n.y, n.w, n.h);
     out += buffer;
-    if (!n.text.empty()) out += ",\"text\":\"" + escape(n.text) + "\"";
+    if (n.placeholder_shown) out += ",\"placeholder\":\"" + escape(n.text) + "\"";
+    else if (!n.text.empty()) out += ",\"text\":\"" + escape(n.text) + "\"";
     if (n.hit) out += ",\"hit\":true";
+    if (n.id == ui.focused) out += ",\"focused\":true";
+    if (n.kind == KindInput) {
+      if (const auto input = inputs.find(n.id); input != inputs.end()) {
+        std::snprintf(buffer, sizeof(buffer), ",\"caret\":%zu,\"anchor\":%zu", input->second.caret, input->second.anchor);
+        out += buffer;
+      }
+    }
     out += "}";
     first = false;
   }

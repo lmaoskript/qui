@@ -98,6 +98,44 @@ Literals: `qui.RGB(r, g, b)`, `qui.RGBA(r, g, b, a)`; C++ `rgba(r, g, b, a)`.
 
 On the web, `Role` picks the element (`RoleHeading` h2, `RoleLink` a, `RoleMain` main, `RoleNav` nav, `RoleImage` role=img) and `Label` sets the accessible name.
 
+## Text input and keys
+
+```go
+package main
+
+import "github.com/torisetxd/qui"
+
+func main() {
+	ui := qui.Open("Chat", 480, 320)
+	defer ui.Close()
+	var draft, last string
+	for ui.Frame() {
+		if ui.KeyPressed('k', qui.ModCtrl) {
+			draft = ""
+		}
+		ui.Column(qui.Style{W: qui.Fill(), H: qui.Fill(), Pad: qui.All(16), Gap: 8}, func() {
+			ui.Text(last)
+			field := ui.Input("draft", &draft, qui.InputOptions{
+				Style:        qui.Style{W: qui.Fill(), MaxH: 120},
+				Placeholder:  "Message",
+				Multiline:    true,
+				EnterSubmits: true,
+				Autofocus:    true,
+			})
+			if field.Submitted {
+				last, draft = draft, ""
+			}
+		})
+	}
+}
+```
+
+`Input` takes a stable key and a pointer to your string, which it updates when `Changed` is true. Assigning to the string yourself replaces the field and moves the caret to the end. Options: `Style Placeholder Size Mono Multiline EnterSubmits Password Autofocus Focus` (`Focus` takes focus on every frame it is true); C++ `input(key, value, {.style, .placeholder, .size, .mono, .multiline, .enter_submits, .password, .autofocus, .focus})`.
+
+Enter submits a single-line field. In a multiline field Enter adds a newline and Ctrl+Enter submits, unless `EnterSubmits` is set, where Enter submits and Shift+Enter adds a newline. Multiline fields grow with their text up to `MaxH`, then scroll. Native fields handle caret movement, selection, clipboard, undo, IME composition and Linux primary selection; the web uses real `<input>` and `<textarea>`.
+
+`ui.KeyPressed(key, mods...)` (C++ `ui.key_pressed(key, mods)`) needs the exact modifiers. Keys are `KeyEnter KeyEscape KeyBackspace KeyDelete KeySpace KeyLeft KeyRight KeyUp KeyDown KeyHome KeyEnd KeyPageUp KeyPageDown KeyF1..KeyF12` or a lowercase rune. Mods are `ModShift ModCtrl ModAlt ModMeta`. A focused field keeps the keys it uses, Tab moves focus, and Enter or Space clicks a focused button.
+
 ## Virtual list
 
 ```go
@@ -177,16 +215,16 @@ Any of the first three variables runs the app offscreen for a few frames and exi
 | Variable | Effect |
 | --- | --- |
 | `QUI_SHOT=a.png` | Write a screenshot |
-| `QUI_TREE=a.json` | Dump every node: `id parent kind x y w h text hit` |
+| `QUI_TREE=a.json` | Dump every node: `id parent kind x y w h text placeholder hit focused caret anchor` |
 | `QUI_WIRE=a.bin` | Dump the frame's wire bytes |
 | `QUI_SIZE=1100x700` | Viewport size |
 | `QUI_DPR=2` | Pixel ratio |
 | `QUI_BACKEND=cpu` or `gl` | Force a renderer |
 | `QUI_FRAMES=n` | Minimum frames before exiting |
-| `QUI_DRIVE='click:58,231;wheel:600,400,-40'` | Scripted input in logical pixels: `click:x,y`, `rclick:x,y`, `move:x,y`, `wheel:x,y,amount` (negative scrolls down) |
+| `QUI_DRIVE='click:58,231;type:hello;key:ctrl+a'` | Scripted input, `;` separated, in logical pixels: `click:x,y`, `dblclick:x,y`, `rclick:x,y`, `drag:x0,y0,x1,y1`, `move:x,y`, `wheel:x,y,amount` (negative scrolls down), `type:text`, `key:shift+left`, `ime:text` |
 
 ## Not available yet
 
-Do not assume these exist: text input and keyboard events, images, touch gestures, Android builds, Windows. Native focus comes only from clicks. On the web, `Response` has no drag flags or `X Y W H`, and list spacers use the estimate, so the scrollbar can shift when real heights differ.
+Do not assume these exist: images, touch gestures, Android builds, Windows, right-to-left text editing. On the web, `Response` has no drag flags or `X Y W H`, and list spacers use the estimate, so the scrollbar can shift when real heights differ.
 
 To add a node kind, op or token, edit `spec.txt` and run `go run ./tools/gen`; `docs/wire.md` documents the format.

@@ -1,43 +1,47 @@
 package qui
 
-const wireVersion = 1
+const wireVersion = 2
 
 const (
-	opEnd      = 0
-	opOpen     = 1
-	opFrame    = 2
-	opDir      = 3
-	opWidth    = 4
-	opHeight   = 5
-	opMinW     = 6
-	opMaxW     = 7
-	opMinH     = 8
-	opMaxH     = 9
-	opPad      = 10
-	opGap      = 11
-	opAlign    = 12
-	opJustify  = 13
-	opPos      = 14
-	opBg       = 15
-	opFg       = 16
-	opBorder   = 17
-	opRadius   = 18
-	opOpacity  = 19
-	opClip     = 20
-	opScroll   = 21
-	opHit      = 22
-	opRole     = 23
-	opLabel    = 24
-	opText     = 25
-	opFontSize = 26
-	opWeight   = 27
-	opMono     = 28
-	opEllipsis = 29
-	opVirtual  = 30
-	opItem     = 31
-	opSrc      = 32
-	opUniform  = 33
-	opFps      = 34
+	opEnd         = 0
+	opOpen        = 1
+	opFrame       = 2
+	opDir         = 3
+	opWidth       = 4
+	opHeight      = 5
+	opMinW        = 6
+	opMaxW        = 7
+	opMinH        = 8
+	opMaxH        = 9
+	opPad         = 10
+	opGap         = 11
+	opAlign       = 12
+	opJustify     = 13
+	opPos         = 14
+	opBg          = 15
+	opFg          = 16
+	opBorder      = 17
+	opRadius      = 18
+	opOpacity     = 19
+	opClip        = 20
+	opScroll      = 21
+	opHit         = 22
+	opRole        = 23
+	opLabel       = 24
+	opText        = 25
+	opFontSize    = 26
+	opWeight      = 27
+	opMono        = 28
+	opEllipsis    = 29
+	opVirtual     = 30
+	opItem        = 31
+	opSrc         = 32
+	opUniform     = 33
+	opFps         = 34
+	opPlaceholder = 35
+	opMultiline   = 36
+	opPassword    = 37
+	opFocus       = 38
 )
 
 const (
@@ -46,6 +50,7 @@ const (
 	kindButton = 2
 	kindList   = 3
 	kindShader = 4
+	kindInput  = 5
 )
 
 const (
@@ -70,6 +75,8 @@ const (
 	flagDragStart    = 32
 	flagDragging     = 64
 	flagDragEnd      = 128
+	flagChanged      = 256
+	flagSubmitted    = 512
 )
 
 const (
@@ -116,4 +123,40 @@ const (
 	ScrollbarHot Color = 17 << 24
 	Scrim        Color = 18 << 24
 	Shadow       Color = 19 << 24
+)
+
+const (
+	KeyBackspace Key = 8
+	KeyTab       Key = 9
+	KeyEnter     Key = 13
+	KeyEscape    Key = 27
+	KeySpace     Key = 32
+	KeyDelete    Key = 127
+	KeyLeft      Key = 1000
+	KeyRight     Key = 1001
+	KeyUp        Key = 1002
+	KeyDown      Key = 1003
+	KeyHome      Key = 1004
+	KeyEnd       Key = 1005
+	KeyPageUp    Key = 1006
+	KeyPageDown  Key = 1007
+	KeyF1        Key = 1011
+	KeyF2        Key = 1012
+	KeyF3        Key = 1013
+	KeyF4        Key = 1014
+	KeyF5        Key = 1015
+	KeyF6        Key = 1016
+	KeyF7        Key = 1017
+	KeyF8        Key = 1018
+	KeyF9        Key = 1019
+	KeyF10       Key = 1020
+	KeyF11       Key = 1021
+	KeyF12       Key = 1022
+)
+
+const (
+	ModShift Mods = 1
+	ModCtrl  Mods = 2
+	ModAlt   Mods = 4
+	ModMeta  Mods = 8
 )

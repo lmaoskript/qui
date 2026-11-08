@@ -1,10 +1,27 @@
-import { Align, Dir, Flag, Kind, Op, Role, Size, Themes, Tokens, Version } from "./wire.gen.js";
+import { Align, Dir, Flag, Key, Kind, Mod, Op, Role, Size, Themes, Tokens, Version } from "./wire.gen.js";
 
-const HEADER = 32;
+const HEADER = 48;
 const SLOT = 48;
 const OVERSCAN_ROWS = 6;
 const MAGIC = 0x31495551;
 const decoder = new TextDecoder();
+const encoder = new TextEncoder();
+
+const namedKeys = {
+  Backspace: Key.Backspace, Tab: Key.Tab, Enter: Key.Enter, Escape: Key.Escape, " ": Key.Space, Delete: Key.Delete,
+  ArrowLeft: Key.Left, ArrowRight: Key.Right, ArrowUp: Key.Up, ArrowDown: Key.Down,
+  Home: Key.Home, End: Key.End, PageUp: Key.PageUp, PageDown: Key.PageDown,
+};
+const fieldEditKeys = new Set([Key.Left, Key.Right, Key.Home, Key.End, Key.Backspace, Key.Delete]);
+const fieldCtrlKeys = new Set([..."acxvzy"].map((c) => c.codePointAt(0)).concat([...fieldEditKeys]));
+
+function keyCode(event) {
+  if (namedKeys[event.key] !== undefined) return namedKeys[event.key];
+  if (/^F([1-9]|1[0-2])$/.test(event.key)) return Key.F1 + Number(event.key.slice(1)) - 1;
+  if (/^Digit\d$/.test(event.code)) return event.code.charCodeAt(5);
+  if ([...event.key].length === 1) return event.key.toLowerCase().codePointAt(0);
+  return undefined;
+}
 
 const flexAlign = { [Align.Start]: "flex-start", [Align.Center]: "center", [Align.End]: "flex-end", [Align.Stretch]: "stretch", [Align.Between]: "space-between" };
 const selfAlign = { [Align.Start]: "start", [Align.Center]: "center", [Align.End]: "end", [Align.Stretch]: "stretch", [Align.Between]: "start" };
@@ -19,6 +36,10 @@ const baseCss = `
 .qui-btn:active { box-shadow: inset 0 0 0 999px var(--qui-Active); }
 .qui-btn:focus-visible { outline: 2px solid var(--qui-Accent); outline-offset: 1px; }
 .qui-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.qui-input { display: block; padding: 5px 9px; border: 1px solid var(--qui-Line); border-radius: 6px; background: var(--qui-Inset);
+  color: var(--qui-Ink); font: inherit; outline: none; resize: none; }
+.qui-input:focus { border-color: var(--qui-Accent); }
+.qui-input::placeholder { color: var(--qui-Muted); opacity: 1; }
 .qui-list { overflow-y: auto; display: block; }
 .qui-root, .qui-root * { scrollbar-width: thin; scrollbar-color: var(--qui-Scrollbar) transparent; }
 .qui-root canvas { display: block; }
@@ -128,6 +149,10 @@ function decode(bytes, length) {
       case Op.Item: node.item = r.u32(); break;
       case Op.Src: node.src = r.str(); break;
       case Op.Fps: node.fps = r.f32(); break;
+      case Op.Placeholder: node.placeholder = r.str(); break;
+      case Op.Multiline: node.multiline = r.u8(); break;
+      case Op.Password: node.password = true; break;
+      case Op.Focus: node.focus = r.u8(); break;
       case Op.Uniform: {
         const nameLength = r.u8();
         const name = decoder.decode(r.bytes.subarray(r.at, r.at + nameLength));
@@ -160,6 +185,7 @@ function css(node, parent) {
   const wMode = node.wMode ?? Size.Fit;
   const hMode = node.hMode ?? Size.Fit;
   s += sizeCss(wMode, node.wVal, "width") + sizeCss(hMode, node.hVal, "height");
+  if (node.kind === Kind.Input && wMode === Size.Fit) s += "width:200px;";
 
   if (node.absolute) {
     s += `position:absolute;left:${node.x}px;top:${node.y}px;`;
@@ -200,7 +226,7 @@ function css(node, parent) {
       s += `align-items:${flexAlign[node.align ?? 0]};justify-content:${flexAlign[node.justify ?? 0]};`;
     }
   }
-  if (node.kind === Kind.Text || node.kind === Kind.Button) {
+  if (node.kind === Kind.Text || node.kind === Kind.Button || node.kind === Kind.Input) {
     const size = node.fontSize || 14;
     s += `font-size:${size}px;line-height:${Math.ceil(size * 1.4)}px;`;
     if (node.weight) s += "font-weight:600;";
@@ -214,6 +240,7 @@ function css(node, parent) {
 function tagFor(node) {
   if (node.kind === Kind.Button) return node.role === Role.Link ? "a" : "button";
   if (node.kind === Kind.Shader) return "canvas";
+  if (node.kind === Kind.Input) return node.multiline ? "textarea" : "input";
   if (node.kind === Kind.Text) return node.role === Role.Heading ? "h2" : "span";
   if (node.role === Role.Main) return "main";
   if (node.role === Role.Nav) return "nav";
@@ -352,6 +379,7 @@ class Patcher {
     this.nodes = new Map();
     this.entries = new Map();
     this.oneShots = [];
+    this.keys = [];
     this.lists = new Set();
     this.rafPending = false;
     this.lastTime = performance.now();
@@ -387,7 +415,54 @@ class Patcher {
     this.root.addEventListener("focusin", (e) => { const el = target(e); if (el) flag(el, Flag.Focused, true); });
     this.root.addEventListener("focusout", (e) => { const el = target(e); if (el) flag(el, Flag.Focused, false); });
     this.root.addEventListener("pointermove", (e) => { this.pointer = [e.clientX, e.clientY]; }, { passive: true });
+    this.root.addEventListener("input", (e) => {
+      if (!e.target.classList?.contains("qui-input")) return;
+      const field = e.target;
+      const state = entry(field);
+      if (!state) return;
+      field.__reported = field.value;
+      state.text = field.value;
+      this.autosize(field);
+      shot(field, Flag.Changed);
+    });
+    this.root.addEventListener("compositionstart", (e) => { e.target.__composing = true; });
+    this.root.addEventListener("compositionend", (e) => { e.target.__composing = false; });
+    window.addEventListener("keydown", (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
+      const code = keyCode(e);
+      if (code === undefined || code === Key.Tab) return;
+      const mods = (e.shiftKey ? Mod.Shift : 0) | (e.ctrlKey ? Mod.Ctrl : 0) | (e.altKey ? Mod.Alt : 0) | (e.metaKey ? Mod.Meta : 0);
+      if (e.target.classList?.contains("qui-input")) {
+        if (this.fieldKey(e.target, e, code, mods, shot)) return;
+      } else if (e.target.tagName === "BUTTON" && !mods && (code === Key.Enter || code === Key.Space)) {
+        return;
+      }
+      this.keys.push(code, mods);
+      this.requestFrame();
+    });
     new ResizeObserver(() => this.requestFrame()).observe(this.root);
+  }
+
+  fieldKey(field, event, code, mods, shot) {
+    const shift = (mods & Mod.Shift) !== 0, ctrl = (mods & Mod.Ctrl) !== 0;
+    if (code === Key.Escape || (mods & (Mod.Alt | Mod.Meta))) return false;
+    if (code === Key.Enter) {
+      const submit = !field.__multi || (field.__multi === 2 ? !shift : ctrl);
+      if (submit) {
+        if (field.__multi) event.preventDefault();
+        shot(field, Flag.Submitted);
+      }
+      return true;
+    }
+    if (code === Key.Up || code === Key.Down) return Boolean(field.__multi);
+    if (ctrl) return fieldCtrlKeys.has(code);
+    return code < Key.Left || fieldEditKeys.has(code);
+  }
+
+  autosize(field) {
+    if (!field.__multi || field.__fixedHeight) return;
+    field.style.height = "auto";
+    field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
   }
 
   requestFrame() {
@@ -412,6 +487,11 @@ class Patcher {
     this.nodes.set(node.key, el);
     if (node.kind === Kind.Button) el.className = "qui-btn";
     if (node.kind === Kind.Text) el.className = "qui-text";
+    if (node.kind === Kind.Input) {
+      el.className = "qui-input";
+      if (node.multiline) el.rows = 1;
+      el.spellcheck = false;
+    }
     if (node.kind === Kind.Shader) el.__shader = new ShaderView(el);
     if (node.kind === Kind.List) {
       el.className = "qui-list";
@@ -469,13 +549,31 @@ class Patcher {
       if (node.label) el.setAttribute("aria-label", node.label);
       else el.removeAttribute("aria-label");
       if (node.role === Role.Image) el.setAttribute("role", "img");
-      if (node.hit || node.kind === Kind.Button) el.setAttribute("data-qh", "");
+      if (node.hit || node.kind === Kind.Button || node.kind === Kind.Input) el.setAttribute("data-qh", "");
       else el.removeAttribute("data-qh");
       if (node.kind === Kind.Shader) el.__shader.update(node);
+      if (node.kind === Kind.Input) this.patchField(el, node);
     }
-    if (node.hit || node.kind === Kind.Button || node.kind === Kind.List) this.entryFor(node);
+    if (node.focus && document.activeElement !== el && (node.focus === 2 || !el.__autofocused)) {
+      el.__autofocused = true;
+      el.focus();
+    }
+    if (node.hit || node.kind === Kind.Button || node.kind === Kind.List || node.kind === Kind.Input) this.entryFor(node);
     if (node.kind === Kind.List) this.patchList(el, node);
     else this.reconcile(el, node, null, null);
+  }
+
+  patchField(el, node) {
+    el.__multi = node.multiline ?? 0;
+    el.__fixedHeight = (node.hMode ?? Size.Fit) !== Size.Fit;
+    el.placeholder = node.placeholder ?? "";
+    if (!node.multiline) el.type = node.password ? "password" : "text";
+    const value = node.text ?? "";
+    if (value !== el.__reported && value !== el.value && !el.__composing) {
+      el.value = value;
+      el.__reported = value;
+    }
+    this.autosize(el);
   }
 
   patchList(el, node) {
@@ -536,8 +634,32 @@ class Patcher {
     const n = this.entries.size;
     let capacity = 16;
     while (capacity < n * 2) capacity *= 2;
-    const table = new Uint8Array(HEADER + capacity * SLOT);
+    const encoded = [];
+    let textBytes = 0;
+    for (const entry of this.entries.values()) {
+      if (entry.text === undefined) continue;
+      const bytes = encoder.encode(entry.text);
+      entry.first = textBytes;
+      entry.count = bytes.length;
+      entry.text = undefined;
+      encoded.push(bytes);
+      textBytes += bytes.length;
+    }
+    const keysAt = HEADER + capacity * SLOT;
+    const textAt = keysAt + this.keys.length * 4;
+    const table = new Uint8Array(textAt + textBytes);
     const view = new DataView(table.buffer);
+    view.setUint32(32, keysAt, true);
+    view.setUint32(36, this.keys.length / 2, true);
+    view.setUint32(40, textAt, true);
+    this.keys.forEach((value, index) => view.setUint32(keysAt + index * 4, value, true));
+    let textCursor = textAt;
+    for (const bytes of encoded) {
+      table.set(bytes, textCursor);
+      textCursor += bytes.length;
+    }
+    const hadKeys = this.keys.length > 0;
+    this.keys.length = 0;
     view.setUint32(0, MAGIC, true);
     view.setUint32(4, capacity, true);
     view.setFloat32(8, this.root.clientWidth, true);
@@ -557,7 +679,7 @@ class Patcher {
       view.setUint32(at + 12, entry.first, true);
       view.setUint32(at + 16, entry.count, true);
     }
-    if (this.oneShots.length) {
+    if (this.oneShots.length || hadKeys) {
       for (const [entry, bit] of this.oneShots) entry.flags &= ~bit;
       this.oneShots.length = 0;
       this.requestFrame();

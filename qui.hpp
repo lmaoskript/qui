@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -67,6 +68,7 @@ inline constexpr TextStyle Code{.size = 13, .mono = true};
 struct Response {
   bool found = false, hovered = false, pressed = false, clicked = false, right_clicked = false;
   bool focused = false, drag_start = false, dragging = false, drag_end = false;
+  bool changed = false, submitted = false;
   float x = 0, y = 0, w = 0, h = 0, dx = 0, dy = 0;
   uint32_t first = 0, count = 0;
 };
@@ -86,6 +88,13 @@ struct ShaderOptions {
   Style style{};
   float fps = 0;
   std::initializer_list<Uniform> uniforms{};
+};
+
+struct InputOptions {
+  Style style{};
+  std::string_view placeholder{};
+  float size = 0;
+  bool mono = false, multiline = false, enter_submits = false, password = false, autofocus = false, focus = false;
 };
 
 inline void set_app_id(const char *id) { qui_set_app_id(id); }
@@ -187,6 +196,35 @@ class Ui {
     return result;
   }
 
+  Response input(std::string_view key, std::string &value, const InputOptions &options = {}) {
+    const uint64_t id = open(wire::KindInput, key);
+    Response result = lookup(id);
+    if (result.changed) value.assign(reinterpret_cast<const char *>(res_) + header_u32(40) + result.first, result.count);
+    result.first = result.count = 0;
+    emit_style(options.style);
+    str(wire::OpText, value);
+    if (!options.placeholder.empty()) str(wire::OpPlaceholder, options.placeholder);
+    if (options.size) f32_op(wire::OpFontSize, options.size);
+    if (options.mono) u8(wire::OpMono);
+    if (options.multiline) u8_op(wire::OpMultiline, options.enter_submits ? 2 : 1);
+    if (options.password) u8(wire::OpPassword);
+    if (options.focus) u8_op(wire::OpFocus, 2);
+    else if (options.autofocus) u8_op(wire::OpFocus, 1);
+    u8(wire::OpEnd);
+    return result;
+  }
+
+  bool key_pressed(uint32_t key, uint32_t mods = 0) const {
+    if (!res_) return false;
+    const uint32_t at = header_u32(32), count = header_u32(36);
+    for (uint32_t i = 0; i < count; ++i) {
+      uint32_t event[2];
+      std::memcpy(event, res_ + at + i * 8, 8);
+      if (event[0] == key && event[1] == mods) return true;
+    }
+    return false;
+  }
+
   void shader(const ShaderOptions &options) {
     open(wire::KindShader, options.style.key);
     emit_style(options.style);
@@ -222,6 +260,12 @@ class Ui {
 
   float header(size_t offset) const {
     float value = 0;
+    if (res_) std::memcpy(&value, res_ + offset, 4);
+    return value;
+  }
+
+  uint32_t header_u32(size_t offset) const {
+    uint32_t value = 0;
     if (res_) std::memcpy(&value, res_ + offset, 4);
     return value;
   }
@@ -317,7 +361,7 @@ class Ui {
     std::memcpy(&capacity, res_ + 4, 4);
     if (!capacity) return out;
     for (uint32_t i = static_cast<uint32_t>(id) & (capacity - 1);; i = (i + 1) & (capacity - 1)) {
-      const uint8_t *slot = res_ + 32 + static_cast<size_t>(i) * 48;
+      const uint8_t *slot = res_ + 48 + static_cast<size_t>(i) * 48;
       uint64_t key = 0;
       std::memcpy(&key, slot, 8);
       if (key == 0) return out;
@@ -341,6 +385,8 @@ class Ui {
       out.drag_start = flags & wire::FlagDragStart;
       out.dragging = flags & wire::FlagDragging;
       out.drag_end = flags & wire::FlagDragEnd;
+      out.changed = flags & wire::FlagChanged;
+      out.submitted = flags & wire::FlagSubmitted;
       return out;
     }
   }

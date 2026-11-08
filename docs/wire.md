@@ -21,11 +21,13 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `MinW`, `MaxW`, `MinH`, `MaxH`, `Gap`, `Radius`, `Opacity`, `FontSize`, `Fps` | `f32` |
 | `Pad` | `top:f32 right:f32 bottom:f32 left:f32` |
 | `Align`, `Justify`, `Hit`, `Role`, `Weight` | `u8` |
+| `Multiline` | `u8`, 1 for Enter inserting a newline, 2 for Enter submitting |
+| `Focus` | `u8`, 1 to focus on first appearance, 2 to focus now |
 | `Pos` | `x:f32 y:f32` |
 | `Bg`, `Fg` | `color:u32` |
 | `Border` | `color:u32 width:f32` |
-| `Clip`, `Scroll`, `Mono`, `Ellipsis` | none |
-| `Label`, `Text`, `Src` | `str` |
+| `Clip`, `Scroll`, `Mono`, `Ellipsis`, `Password` | none |
+| `Label`, `Text`, `Src`, `Placeholder` | `str` |
 | `Virtual` | `count:u32 estimate:f32 bottom:u8` |
 | `Item` | `index:u32` |
 | `Uniform` | `name_len:u8 name n:u8 f32 * n` |
@@ -38,10 +40,14 @@ clear, which would otherwise be an invisible color.
 The backend answers each frame with a table the app reads while building the
 next one, so widget calls never cross into the engine.
 
-The header is 32 bytes: `magic:u32 capacity:u32 width:f32 height:f32 dpr:f32
-dt:f32 pointer_x:f32 pointer_y:f32`. It is followed by `capacity` slots of 48
-bytes, open-addressed with linear probing from `id & (capacity - 1)`. An empty
-slot has `id == 0`.
+The header is 48 bytes: `magic:u32 capacity:u32 width:f32 height:f32 dpr:f32
+dt:f32 pointer_x:f32 pointer_y:f32 keys_offset:u32 keys_count:u32
+text_offset:u32 reserved:u32`. It is followed by `capacity` slots of 48 bytes,
+open-addressed with linear probing from `id & (capacity - 1)`. An empty slot has
+`id == 0`.
+
+After the slots come `keys_count` key events of `key:u32 mods:u32`, then the
+UTF-8 text of every edited `Input`.
 
 | Offset | Field |
 | --- | --- |
@@ -53,7 +59,20 @@ slot has `id == 0`.
 | 24 | `x:f32 y:f32 w:f32 h:f32` |
 | 40 | `dx:f32 dy:f32` |
 
-`first` and `count` are the visible item range of a `List`.
+`first` and `count` are the visible item range of a `List`. On an `Input` with
+`Changed` set they are the byte offset from `text_offset` and the length of its
+new value.
+
+## Text fields
+
+An `Input` carries the app's current value in `Text` every frame. The backend
+owns the caret, selection and composition, and reports edits through `Changed`.
+A value that differs from the last one reported is an edit by the app, so it
+replaces the field's contents and moves the caret to the end.
+
+Keys a focused field acts on are not reported as key events: printable keys,
+caret movement, Enter, and Ctrl with `A C X V Z Y`. Tab moves focus and is never
+reported, and Enter or Space on a focused button clicks it.
 
 ## Layout
 

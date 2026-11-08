@@ -1,13 +1,14 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 1
+version 2
 
 kind Box 0
 kind Text 1
 kind Button 2
 kind List 3
 kind Shader 4
+kind Input 5
 
 dir Column 0
 dir Row 1
@@ -67,6 +68,42 @@ op Item 31
 op Src 32
 op Uniform 33
 op Fps 34
+op Placeholder 35
+op Multiline 36
+op Password 37
+op Focus 38
+
+key Backspace 8
+key Tab 9
+key Enter 13
+key Escape 27
+key Space 32
+key Delete 127
+key Left 1000
+key Right 1001
+key Up 1002
+key Down 1003
+key Home 1004
+key End 1005
+key PageUp 1006
+key PageDown 1007
+key F1 1011
+key F2 1012
+key F3 1013
+key F4 1014
+key F5 1015
+key F6 1016
+key F7 1017
+key F8 1018
+key F9 1019
+key F10 1020
+key F11 1021
+key F12 1022
+
+mod Shift 1
+mod Ctrl 2
+mod Alt 4
+mod Meta 8
 
 flag Hovered 1
 flag Pressed 2
@@ -76,6 +113,8 @@ flag Focused 16
 flag DragStart 32
 flag Dragging 64
 flag DragEnd 128
+flag Changed 256
+flag Submitted 512
 
 token Background 1
 token Surface 2

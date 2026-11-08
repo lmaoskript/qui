@@ -4,6 +4,7 @@
 #include "text_shaper.hpp"
 #include "wire.gen.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -12,6 +13,9 @@
 #include <vector>
 
 namespace qui {
+
+inline constexpr float kDefaultFontSize = 14;
+inline float line_height_for(float size) { return std::ceil(size * 1.4f); }
 
 struct IRect {
   int x = 0, y = 0, w = 0, h = 0;
@@ -26,6 +30,7 @@ struct TextLine {
   uint32_t first = 0, last = 0;
   float width = 0;
   bool ellipsis = false;
+  uint32_t para_byte = 0, start_byte = 0, end_byte = 0;
 };
 
 struct UniformRef {
@@ -39,13 +44,15 @@ struct Node {
   int32_t parent = -1, first_child = -1, last_child = -1, next_sibling = -1;
   uint8_t kind = 0, dir = 0, align = 0, justify = 0, role = 0, hit = 0, weight = 0;
   uint8_t w_mode = 0, h_mode = 0;
+  uint8_t multiline = 0, focus_mode = 0;
   bool mono = false, clip = false, scroll = false, ellipsis = false, has_pos = false, bottom = false;
+  bool password = false, placeholder_shown = false;
   float w_val = 0, h_val = 0, min_w = 0, max_w = 0, min_h = 0, max_h = 0;
   float pad[4] = {};
   float gap = 0, pos_x = 0, pos_y = 0;
   uint32_t bg = 0, fg = 0, border = 0;
   float border_w = 0, radius = 0, opacity = 1, font_size = 0;
-  std::string_view text, label, src;
+  std::string_view text, label, src, placeholder;
   uint32_t count = 0;
   float est = 0;
   int64_t item = -1;
@@ -123,7 +130,7 @@ struct HitEntry {
   uint64_t id = 0;
   float x = 0, y = 0, w = 0, h = 0;
   float cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0;
-  bool press = false, scroll = false;
+  bool press = false, scroll = false, focusable = false;
 };
 
 struct ScrollState {
@@ -143,13 +150,62 @@ struct ListState {
   void compute_range();
 };
 
+enum class EditKind : uint8_t { None, Type, Erase, Other };
+
+struct InputState {
+  struct Snapshot {
+    std::string text;
+    size_t caret = 0, anchor = 0;
+  };
+
+  uint64_t id = 0, frame = 0;
+  int node = -1;
+  std::string text, seen, display, preedit, placeholder;
+  size_t caret = 0, anchor = 0, preedit_cursor = 0, last_end = 0;
+  float scroll_x = 0, scroll_y = 0, goal_x = -1;
+  bool changed = false, submitted = false, multiline = false, submit_on_enter = false, password = false, reveal = true;
+  EditKind last_edit = EditKind::None;
+  std::vector<Snapshot> undo, redo;
+
+  bool has_selection() const { return caret != anchor; }
+  size_t selection_start() const { return std::min(caret, anchor); }
+  size_t selection_end() const { return std::max(caret, anchor); }
+  std::string_view selected() const;
+  void snapshot();
+  void replace_range(size_t from, size_t to, std::string_view with, EditKind kind);
+  void restore(std::vector<Snapshot> &from, std::vector<Snapshot> &to);
+  void assign(std::string_view value);
+  void rebuild_display();
+  size_t to_display(size_t byte) const;
+  size_t from_display(size_t byte) const;
+  size_t caret_display() const;
+};
+
+size_t next_boundary(std::string_view text, size_t at);
+size_t previous_boundary(std::string_view text, size_t at);
+size_t next_word(std::string_view text, size_t at);
+size_t previous_word(std::string_view text, size_t at);
+void word_range(std::string_view text, size_t at, size_t &from, size_t &to);
+std::string clean_input(std::string_view text, bool multiline);
+
+struct Interaction {
+  uint64_t hovered = 0, pressed = 0, focused = 0;
+  bool focus_ring = false, caret_on = true;
+};
+
 class Engine {
  public:
   Engine();
 
   void decode(const uint8_t *wire, size_t len);
   void layout(float width, float height, float dpr);
-  void paint(uint64_t hovered, uint64_t pressed);
+  void paint();
+
+  void refresh_input(InputState &state);
+  size_t input_byte_at(const InputState &state, float x, float y) const;
+  void input_caret_rect(const InputState &state, float &x, float &y, float &h) const;
+  size_t input_line_edge(const InputState &state, bool end) const;
+  size_t input_vertical(InputState &state, int direction) const;
 
   std::vector<Node> nodes;
   std::vector<TextLine> lines;
@@ -157,6 +213,9 @@ class Engine {
   std::vector<HitEntry> hits;
   std::unordered_map<uint64_t, ScrollState> scrolls;
   std::unordered_map<uint64_t, ListState> lists;
+  std::unordered_map<uint64_t, InputState> inputs;
+  Interaction ui;
+  uint64_t focus_request = 0;
   FontManager fonts;
   TextShaper shaper{fonts};
   FrameData frame, previous;
@@ -181,8 +240,12 @@ class Engine {
   void place_children(Node &node);
   void place_list(Node &node);
   void wrap(Node &node, float inner_width);
-  void paint_node(int index, float opacity, IRect clip, uint64_t hovered, uint64_t pressed);
-  void paint_text(const Node &node, float opacity, IRect clip);
+  void sync_input(Node &node, int index);
+  void apply_input_view(Node &node, const InputState &state);
+  float input_text_top(const Node &node, const InputState &state) const;
+  void paint_node(int index, float opacity, IRect clip);
+  void paint_text(const Node &node, float opacity, IRect clip, float dx = 0, float dy = 0, uint32_t color_override = 0);
+  void paint_input(const Node &node, float alpha, IRect clip);
   void add_rect(float x, float y, float w, float h, uint32_t color, float radius, float stroke, IRect clip);
   void add_instance(const Instance &instance, int page, IRect clip);
   void prune();

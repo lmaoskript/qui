@@ -66,6 +66,7 @@ var (
 type Response struct {
 	Found, Hovered, Pressed, Clicked, RightClicked bool
 	Focused, DragStart, Dragging, DragEnd          bool
+	Changed, Submitted                             bool
 	X, Y, W, H, DX, DY                             float32
 	First, Count                                   uint32
 }
@@ -85,6 +86,13 @@ type ShaderOptions struct {
 	Style    Style
 	Fps      float32
 	Uniforms []Uniform
+}
+
+type InputOptions struct {
+	Style                                                     Style
+	Placeholder                                               string
+	Size                                                      float32
+	Mono, Multiline, EnterSubmits, Password, Autofocus, Focus bool
 }
 
 type scope struct {
@@ -222,6 +230,72 @@ func (u *Ui) List(key string, count int, estimate float32, o ListOptions, row fu
 	u.stack = u.stack[:len(u.stack)-1]
 	u.u8(opEnd)
 	return result
+}
+
+// Input draws an editable text field bound to value. value is updated when
+// Response.Changed is true.
+func (u *Ui) Input(key string, value *string, options ...InputOptions) Response {
+	var o InputOptions
+	if len(options) > 0 {
+		o = options[0]
+	}
+	id := u.open(kindInput, key)
+	result := u.lookup(id)
+	if result.Changed {
+		start := binary.LittleEndian.Uint32(u.res[40:]) + result.First
+		*value = string(u.res[start : start+result.Count])
+	}
+	result.First, result.Count = 0, 0
+	u.emitStyle(&o.Style)
+	u.str(opText, *value)
+	if o.Placeholder != "" {
+		u.str(opPlaceholder, o.Placeholder)
+	}
+	if o.Size != 0 {
+		u.f32Op(opFontSize, o.Size)
+	}
+	if o.Mono {
+		u.u8(opMono)
+	}
+	if o.Multiline {
+		if o.EnterSubmits {
+			u.u8Op(opMultiline, 2)
+		} else {
+			u.u8Op(opMultiline, 1)
+		}
+	}
+	if o.Password {
+		u.u8(opPassword)
+	}
+	if o.Focus {
+		u.u8Op(opFocus, 2)
+	} else if o.Autofocus {
+		u.u8Op(opFocus, 1)
+	}
+	u.u8(opEnd)
+	return result
+}
+
+// KeyPressed reports whether key was pressed since the last frame with exactly
+// the given modifiers held. Letters are their lowercase rune, as in
+// KeyPressed('k', ModCtrl).
+func (u *Ui) KeyPressed(key Key, mods ...Mods) bool {
+	if len(u.res) < resultsHeader {
+		return false
+	}
+	var want Mods
+	for _, m := range mods {
+		want |= m
+	}
+	at := binary.LittleEndian.Uint32(u.res[32:])
+	count := binary.LittleEndian.Uint32(u.res[36:])
+	for i := uint32(0); i < count; i++ {
+		event := u.res[at+i*8:]
+		if Key(binary.LittleEndian.Uint32(event)) == key && Mods(binary.LittleEndian.Uint32(event[4:])) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (u *Ui) Shader(o ShaderOptions) {
@@ -408,7 +482,7 @@ func (u *Ui) container(dir uint8, s *Style, body func()) Response {
 }
 
 const (
-	resultsHeader = 32
+	resultsHeader = 48
 	resultsSlot   = 48
 )
 
@@ -448,6 +522,8 @@ func (u *Ui) lookup(id uint64) Response {
 		out.DragStart = flags&flagDragStart != 0
 		out.Dragging = flags&flagDragging != 0
 		out.DragEnd = flags&flagDragEnd != 0
+		out.Changed = flags&flagChanged != 0
+		out.Submitted = flags&flagSubmitted != 0
 		return out
 	}
 }
