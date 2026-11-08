@@ -373,7 +373,7 @@ void Engine::paint_input(const Node &node, float alpha, IRect clip) {
   const float content_h = line_height * static_cast<float>(node.line_count);
   const float content_w = state.multiline ? 0 : lines[node.line_first].width;
 
-  if (state.reveal) {
+  if (state.reveal && focused) {
     if (!state.multiline) {
       if (caret_x + caret_w - state.scroll_x > inner_w) state.scroll_x = caret_x + caret_w - inner_w;
       if (caret_x < state.scroll_x) state.scroll_x = caret_x;
