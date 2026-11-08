@@ -5,6 +5,7 @@
 #include <hb.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -305,7 +306,7 @@ void TextShaper::make_runs(std::vector<Run> &runs, uint32_t text_size,
 }
 
 void TextShaper::make_cache_key(std::string &key, std::string_view text,
-                                const std::vector<Run> &runs) {
+                                const std::vector<Run> &runs, float tracking) {
   key.clear();
   key.reserve(text.size() + runs.size() * 24 + 16);
   key.append(text.data(), text.size());
@@ -317,11 +318,13 @@ void TextShaper::make_cache_key(std::string &key, std::string_view text,
     append_number(key, run.font);
     append_number(key, run.ligatures_enabled ? 1u : 0u);
   }
+  append_number(key, std::bit_cast<uint32_t>(tracking));
 }
 
 const ShapedLine &TextShaper::shape_line(
     std::string_view utf8, std::span<const TextStyleSpan> styles,
     ShapingOptions options) {
+  scratch_tracking_ = options.tracking;
   make_runs(scratch_runs_, static_cast<uint32_t>(utf8.size()), styles, options);
   return shape_from_runs(utf8);
 }
@@ -329,6 +332,7 @@ const ShapedLine &TextShaper::shape_line(
 const ShapedLine &TextShaper::shape_line_single(std::string_view utf8,
                                                 TextStyleSpan style,
                                                 ShapingOptions options) {
+  scratch_tracking_ = options.tracking;
   scratch_runs_.clear();
   const uint32_t size = static_cast<uint32_t>(utf8.size());
   const uint32_t start = std::min(style.start_byte, size);
@@ -351,7 +355,7 @@ const ShapedLine &TextShaper::shape_line_single(std::string_view utf8,
 }
 
 const ShapedLine &TextShaper::shape_from_runs(std::string_view utf8) {
-  make_cache_key(scratch_key_, utf8, scratch_runs_);
+  make_cache_key(scratch_key_, utf8, scratch_runs_, scratch_tracking_);
   const auto existing = cache_.find(scratch_key_);
   if (existing != cache_.end()) {
     ++cache_hits_;
@@ -446,6 +450,8 @@ const ShapedLine &TextShaper::shape_from_runs(std::string_view utf8) {
           glyph.x = line.total_advance;
           const float scale = font_metrics->position_scale / 64.0f;
           glyph.x_advance = positions[i].x_advance * scale;
+          if (glyph.x_advance != 0.0f)
+            glyph.x_advance += scratch_tracking_;
           glyph.y_advance = positions[i].y_advance * scale;
           glyph.x_offset = positions[i].x_offset * scale;
           glyph.y_offset = positions[i].y_offset * scale;

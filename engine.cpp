@@ -332,6 +332,22 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpPassword: node.password = true; break;
       case OpFocus: node.focus_mode = in.read<uint8_t>(); break;
       case OpZ: node.z = in.read<int32_t>(); break;
+      case OpGradient:
+        node.gradient_from = in.read<uint32_t>();
+        node.gradient_to = in.read<uint32_t>();
+        node.gradient_angle = in.read<float>();
+        node.has_gradient = true;
+        break;
+      case OpShadow:
+        node.shadow = in.read<uint32_t>();
+        node.shadow_blur = in.read<float>();
+        node.shadow_y = in.read<float>();
+        break;
+      case OpTracking: node.tracking = in.read<float>(); break;
+      case OpScrollTo:
+        node.scroll_to = in.read<float>();
+        node.has_scroll_to = true;
+        break;
       case OpUniform: {
         UniformRef uniform;
         uniform.name = in.bytes(in.read<uint8_t>());
@@ -386,7 +402,7 @@ void Engine::intrinsic_width(Node &node) {
     for (;;) {
       const size_t nl = rest.find('\n');
       const std::string_view para = rest.substr(0, nl);
-      const ShapedLine &shaped = shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, true});
+      const ShapedLine &shaped = shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, node.tracking == 0, node.tracking * dpr});
       content = std::max(content, shaped.total_advance / dpr);
       if (nl == std::string_view::npos) break;
       rest.remove_prefix(nl + 1);
@@ -465,7 +481,7 @@ void Engine::wrap(Node &node, float inner_width) {
   for (;;) {
     const size_t nl = rest.find('\n');
     const std::string_view para = rest.substr(0, nl);
-    const ShapedLine &shaped = shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, true});
+    const ShapedLine &shaped = shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, node.tracking == 0, node.tracking * dpr});
     const auto count = static_cast<uint32_t>(shaped.glyphs.size());
     const uint32_t para_end = para_byte + static_cast<uint32_t>(para.size());
 
@@ -714,6 +730,7 @@ void Engine::place_children(Node &node) {
       }
     });
     state.content = sum + (flow > 1 ? node.gap * static_cast<float>(flow - 1) : 0);
+    if (node.has_scroll_to) state.offset = node.scroll_to;
     state.offset = std::clamp(state.offset, 0.f, std::max(0.f, state.content - state.viewport));
     scroll = state.offset;
   }
@@ -823,6 +840,12 @@ void Engine::add_rect(float x, float y, float w, float h, uint32_t color, float 
   add_instance(instance, -1, clip);
 }
 
+void Engine::add_gradient(float x, float y, float w, float h, uint32_t from, uint32_t to, float angle, float radius, IRect clip) {
+  Instance instance{x, y, w, h, radius, angle, encode_color_high(to), encode_color_low(to), __builtin_bswap32(from), InstSolid | InstGradient};
+  if (radius > 0) instance.flags |= InstRounded;
+  add_instance(instance, -1, clip);
+}
+
 void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, float dy, uint32_t color_override) {
   const float size = node.font_size > 0 ? node.font_size : kDefaultFontSize;
   const float line_height = line_height_for(size) * dpr;
@@ -833,6 +856,22 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
   const auto alpha = static_cast<uint32_t>(static_cast<float>(color & 0xffu) * opacity + 0.5f);
   color = (color & 0xffffff00u) | std::min(alpha, 255u);
   const uint32_t rgba = __builtin_bswap32(color);
+
+  const auto faded = [&](uint32_t c) {
+    c = resolve(c);
+    return (c & 0xffffff00u) | std::min(static_cast<uint32_t>(static_cast<float>(c & 0xffu) * opacity + 0.5f), 255u);
+  };
+  const float angle = node.gradient_angle * 3.14159265f / 180;
+  const bool gradient = node.has_gradient && !color_override;
+  const bool vertical = std::abs(std::cos(angle)) > std::abs(std::sin(angle));
+  const bool reversed = vertical ? std::cos(angle) > 0 : std::sin(angle) < 0;
+  const uint32_t gradient_from = gradient ? faded(reversed ? node.gradient_to : node.gradient_from) : 0;
+  const uint32_t gradient_to = gradient ? faded(reversed ? node.gradient_from : node.gradient_to) : 0;
+  const float gradient_start = (vertical ? node.y : node.x) * dpr + (vertical ? dy : dx);
+  const float gradient_span = std::max(1.f, (vertical ? node.h : node.w) * dpr);
+  const auto gradient_at = [&](float position) {
+    return mix_colors(gradient_from, gradient_to, std::clamp((position - gradient_start) / gradient_span, 0.f, 1.f));
+  };
 
   const float inner_w = (node.w - node.pad[1] - node.pad[3]) * dpr;
   const float inner_h = (node.h - node.pad[0] - node.pad[2]) * dpr;
@@ -861,6 +900,14 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
                       static_cast<float>(glyph->atlas_x), static_cast<float>(glyph->atlas_y), 0, 0,
                       glyph->color_bitmap ? (0x00ffffffu | (std::min(alpha, 255u) << 24)) : rgba,
                       glyph->color_bitmap ? InstColorGlyph : InstGlyph};
+    if (gradient && !glyph->color_bitmap) {
+      const float start = vertical ? gy : gx;
+      const uint32_t end = gradient_at(start + (vertical ? instance.h : instance.w));
+      instance.rgba = __builtin_bswap32(gradient_at(start));
+      instance.u1 = encode_color_high(end);
+      instance.v1 = encode_color_low(end);
+      instance.flags |= vertical ? InstGradientV : InstGradient;
+    }
     add_instance(instance, static_cast<int>(glyph->atlas_page), clip);
   };
 
@@ -922,9 +969,19 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     if (hit.scroll) own_scroll = static_cast<int32_t>(hits.size()) - 1;
   }
 
+  const float radius = node.radius * dpr;
+  if (node.shadow) {
+    const float blur = std::max(1.f, std::round(node.shadow_blur * dpr));
+    const float offset = std::round(node.shadow_y * dpr);
+    const IRect area{static_cast<int>(x0 - blur), static_cast<int>(y0 + offset - blur), static_cast<int>(w + blur * 2), static_cast<int>(h + blur * 2)};
+    if (!intersect(area, clip).empty()) {
+      const Instance instance{x0 - blur, y0 + offset - blur, w + blur * 2, h + blur * 2, radius, blur, 0, offset, __builtin_bswap32(fade(resolve(node.shadow))), InstShadow};
+      add_instance(instance, -1, clip);
+    }
+  }
+
   if (visible.empty() && index != 0) return;
 
-  const float radius = node.radius * dpr;
   if (node.kind == KindShader) {
     if (node.bg) add_rect(x0, y0, w, h, fade(resolve(node.bg)), radius, 0, clip);
     ShaderDraw draw;
@@ -948,6 +1005,8 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     batch.shader = static_cast<int>(frame.shaders.size());
     frame.batches.push_back(batch);
     frame.shaders.push_back(std::move(draw));
+  } else if (node.has_gradient && node.kind != KindText) {
+    add_gradient(x0, y0, w, h, fade(resolve(node.gradient_from)), fade(resolve(node.gradient_to)), node.gradient_angle * 3.14159265f / 180, radius, clip);
   } else if (node.bg) {
     add_rect(x0, y0, w, h, fade(resolve(node.bg)), radius, 0, clip);
   }

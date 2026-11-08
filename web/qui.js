@@ -163,6 +163,10 @@ function decode(bytes, length) {
       case Op.Password: node.password = true; break;
       case Op.Focus: node.focus = r.u8(); break;
       case Op.Z: node.z = r.u32() | 0; break;
+      case Op.Gradient: node.gradient = { from: r.u32(), to: r.u32(), angle: r.f32() }; break;
+      case Op.Shadow: node.shadow = r.u32(); node.shadowBlur = r.f32(); node.shadowY = r.f32(); break;
+      case Op.Tracking: node.tracking = r.f32(); break;
+      case Op.ScrollTo: node.scrollTo = r.f32(); break;
       case Op.Uniform: {
         const nameLength = r.u8();
         const name = decoder.decode(r.bytes.subarray(r.at, r.at + nameLength));
@@ -199,7 +203,7 @@ function css(node, parent) {
 
   if (node.absolute) {
     s += `position:absolute;left:${node.x}px;top:${node.y}px;`;
-    if (node.kind === Kind.Box && !node.hit && !node.scroll) s += "pointer-events:none;";
+    if ((node.kind === Kind.Box || node.kind === Kind.Shader) && !node.hit && !node.scroll) s += "pointer-events:none;";
     if (wMode === Size.Fill) s += "width:100%;";
     if (hMode === Size.Fill) s += "height:100%;";
   } else if (row) {
@@ -224,6 +228,17 @@ function css(node, parent) {
   if (node.pad) s += `padding:${node.pad[0]}px ${node.pad[1]}px ${node.pad[2]}px ${node.pad[3]}px;`;
   if (node.bg) s += `background:${color(node.bg)};`;
   if (node.fg) s += `color:${color(node.fg)};`;
+  if (node.gradient) {
+    const { from, to, angle } = node.gradient;
+    const image = `linear-gradient(${angle}deg,${color(from)},${color(to)})`;
+    if (node.kind === Kind.Text) {
+      s += `background-image:${image};-webkit-background-clip:text;background-clip:text;color:transparent;`;
+      if (node.tracking < 0) s += `padding-right:${-node.tracking}px;margin-right:${node.tracking}px;`;
+    } else {
+      s += `background:${image};`;
+    }
+  }
+  if (node.shadow) s += `box-shadow:0 ${node.shadowY}px ${node.shadowBlur}px ${color(node.shadow)};`;
   if (node.border) s += `border:${node.borderW}px solid ${color(node.border)};`;
   if (node.radius) s += `border-radius:${node.radius}px;`;
   if (node.opacity) s += `opacity:${node.opacity};`;
@@ -244,6 +259,7 @@ function css(node, parent) {
     s += `font-size:${size}px;line-height:${Math.ceil(size * 1.4)}px;`;
     if (node.weight) s += "font-weight:600;";
     if (node.mono) s += "font-family:var(--qui-mono);";
+    if (node.tracking) s += `letter-spacing:${node.tracking}px;`;
     if (node.ellipsis) s += "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
     if (node.kind === Kind.Text && node.justify) s += `text-align:${node.justify === Align.Center ? "center" : node.justify === Align.End ? "right" : "left"};`;
   }
@@ -683,6 +699,7 @@ class Patcher {
     if (node.hit || node.kind === Kind.Button || node.kind === Kind.List || node.kind === Kind.Input) this.entryFor(node, el);
     if (node.kind === Kind.List) this.patchList(el, node);
     else this.reconcile(el, node, null, null);
+    if (node.scrollTo !== undefined) el.scrollTop = node.scrollTo;
   }
 
   patchShader(el, node) {

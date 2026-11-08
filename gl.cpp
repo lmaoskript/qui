@@ -99,6 +99,7 @@ flat out vec4 v_color;
 flat out uint v_flags;
 flat out vec2 v_size;
 flat out vec2 v_params;
+flat out vec2 v_end;
 out vec2 v_local;
 void main() {
   vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
@@ -109,6 +110,7 @@ void main() {
   v_flags = a_flags;
   v_size = a_rect.zw;
   v_params = a_uv.xy;
+  v_end = a_uv.zw;
   v_local = corner * a_rect.zw;
 }
 )";
@@ -124,6 +126,7 @@ flat in vec4 v_color;
 flat in uint v_flags;
 flat in vec2 v_size;
 flat in vec2 v_params;
+flat in vec2 v_end;
 in vec2 v_local;
 out vec4 out_color;
 float clip_cover() {
@@ -132,24 +135,48 @@ float clip_cover() {
   vec2 q = abs(vec2(gl_FragCoord.x, u_fb.y - gl_FragCoord.y) - u_clip.xy - half_size) - half_size + vec2(u_clip_radius);
   return smoothstep(0.5, -0.5, length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - u_clip_radius);
 }
+vec4 premul(vec4 c) { return vec4(c.rgb * c.a, c.a); }
+vec4 end_color() {
+  return premul(vec4(floor(v_end.x / 256.0), mod(v_end.x, 256.0), floor(v_end.y / 256.0), mod(v_end.y, 256.0)) / 255.0);
+}
+float rounded_dist(vec2 p, vec2 size, float radius) {
+  vec2 half_size = size * 0.5;
+  float r = min(radius, min(half_size.x, half_size.y));
+  vec2 q = abs(p - half_size) - half_size + vec2(r);
+  return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
 void main() {
   const uint solid = 1u;
   const uint color_glyph = 4u;
   const uint rounded = 8u;
+  const uint gradient = 16u;
+  const uint gradient_v = 32u;
+  const uint shadow = 64u;
+  if ((v_flags & shadow) != 0u) {
+    float blur = v_params.y;
+    vec2 box = v_size - vec2(blur * 2.0);
+    float falloff = 1.0 - smoothstep(-blur, blur, rounded_dist(v_local - vec2(blur), box, v_params.x));
+    float outside = smoothstep(-0.5, 0.5, rounded_dist(v_local - vec2(blur, blur - v_end.y), box, v_params.x));
+    out_color = premul(v_color) * falloff * outside * clip_cover();
+    return;
+  }
   if ((v_flags & solid) != 0u) {
+    bool has_gradient = (v_flags & gradient) != 0u;
     float cover = 1.0;
     if ((v_flags & rounded) != 0u) {
-      vec2 half_size = v_size * 0.5;
-      float r = min(v_params.x, min(half_size.x, half_size.y));
-      vec2 q = abs(v_local - half_size) - half_size + vec2(r);
-      float dist = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r;
-      float stroke = v_params.y;
+      float dist = rounded_dist(v_local, v_size, v_params.x);
+      float stroke = has_gradient ? 0.0 : v_params.y;
       cover = stroke > 0.0 ? smoothstep(0.5, -0.5, abs(dist + stroke * 0.5) - stroke * 0.5)
                            : smoothstep(0.5, -0.5, dist);
       if (cover <= 0.0) discard;
     }
-    float a = v_color.a * cover * clip_cover();
-    out_color = vec4(v_color.rgb * a, a);
+    vec4 color = premul(v_color);
+    if (has_gradient) {
+      float s = sin(v_params.y), c = cos(v_params.y);
+      float t = dot(v_local - v_size * 0.5, vec2(s, -c)) / max(abs(v_size.x * s) + abs(v_size.y * c), 1.0) + 0.5;
+      color = mix(color, end_color(), clamp(t, 0.0, 1.0));
+    }
+    out_color = color * cover * clip_cover();
     return;
   }
   ivec2 glyph_size = max(ivec2(round(v_size)), ivec2(1));
@@ -159,8 +186,12 @@ void main() {
     out_color = texel * v_color.a * clip_cover();
     return;
   }
-  float a = v_color.a * texel.a * clip_cover();
-  out_color = vec4(v_color.rgb * a, a);
+  vec4 color = premul(v_color);
+  if ((v_flags & (gradient | gradient_v)) != 0u) {
+    float t = (v_flags & gradient_v) != 0u ? v_local.y / v_size.y : v_local.x / v_size.x;
+    color = mix(color, end_color(), clamp(t, 0.0, 1.0));
+  }
+  out_color = color * texel.a * clip_cover();
 }
 )";
 

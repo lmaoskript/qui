@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 3
+const wireVersion = 4
 
 const (
 	opEnd         = 0
@@ -43,6 +43,10 @@ const (
 	opPassword    = 37
 	opFocus       = 38
 	opZ           = 39
+	opGradient    = 40
+	opShadow      = 41
+	opTracking    = 42
+	opScrollTo    = 43
 )
 
 const (

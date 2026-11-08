@@ -46,6 +46,26 @@ inline float rounded_distance(float px, float py, float half_w, float half_h, fl
   return std::sqrt(ox * ox + oy * oy) + std::min(std::max(qx, qy), 0.f) - r;
 }
 
+struct Premul {
+  float r, g, b, a;
+};
+
+inline Premul unpack(uint32_t rgba) {
+  const float a = static_cast<float>(rgba >> 24) / 255;
+  return {static_cast<float>(rgba & 0xff) / 255 * a, static_cast<float>((rgba >> 8) & 0xff) / 255 * a,
+          static_cast<float>((rgba >> 16) & 0xff) / 255 * a, a};
+}
+
+inline Premul unpack_end(const Instance &inst) {
+  const auto high = static_cast<uint32_t>(inst.u1), low = static_cast<uint32_t>(inst.v1);
+  return unpack((high >> 8) | ((high & 0xff) << 8) | ((low >> 8) << 16) | ((low & 0xff) << 24));
+}
+
+inline uint32_t mixed_pixel(const Premul &from, const Premul &to, float t, float cover) {
+  const auto channel = [&](float a, float b) { return static_cast<uint32_t>((a + (b - a) * t) * cover * 255 + 0.5f); };
+  return channel(from.r, to.r) | (channel(from.g, to.g) << 8) | (channel(from.b, to.b) << 16) | (channel(from.a, to.a) << 24);
+}
+
 class Cpu final : public CpuBackend {
  public:
   void resize(int width, int height) override {
@@ -83,8 +103,12 @@ class Cpu final : public CpuBackend {
       each_corner_pixel(batch.round, clip, [&](int, int, uint32_t &pixel) { saved_.push_back(pixel); });
       for (uint32_t i = batch.first; i < batch.first + batch.count; ++i) {
         const Instance &inst = frame.instances[i];
-        if (inst.flags & InstSolid) {
-          if (inst.flags & InstRounded)
+        if (inst.flags & InstShadow) {
+          shadow(inst, clip);
+        } else if (inst.flags & InstSolid) {
+          if (inst.flags & InstGradient)
+            gradient(inst, clip);
+          else if (inst.flags & InstRounded)
             rounded(inst, clip);
           else
             solid(inst, clip);
@@ -150,6 +174,51 @@ class Cpu final : public CpuBackend {
     }
   }
 
+  void gradient(const Instance &inst, IRect clip) {
+    const int x0 = static_cast<int>(inst.x), y0 = static_cast<int>(inst.y);
+    const IRect r = intersect({x0, y0, static_cast<int>(inst.w), static_cast<int>(inst.h)}, clip);
+    if (r.empty()) return;
+    const Premul from = unpack(inst.rgba), to = unpack_end(inst);
+    const float s = std::sin(inst.v0), c = std::cos(inst.v0);
+    const float length = std::max(1.f, std::abs(inst.w * s) + std::abs(inst.h * c));
+    const float half_w = inst.w / 2, half_h = inst.h / 2;
+    const float radius = std::min({inst.u0, half_w, half_h});
+    const bool is_rounded = (inst.flags & InstRounded) != 0;
+    for (int y = r.y; y < r.y + r.h; ++y) {
+      uint32_t *row = pixels_.data() + static_cast<size_t>(y) * width_;
+      const float py = static_cast<float>(y - y0) + 0.5f;
+      for (int x = r.x; x < r.x + r.w; ++x) {
+        const float px = static_cast<float>(x - x0) + 0.5f;
+        const float cover = is_rounded ? smooth_coverage(rounded_distance(px, py, half_w, half_h, radius)) : 1.f;
+        if (cover <= 0) continue;
+        const float t = std::clamp(((px - half_w) * s - (py - half_h) * c) / length + 0.5f, 0.f, 1.f);
+        row[x] = over(mixed_pixel(from, to, t, cover), row[x]);
+      }
+    }
+  }
+
+  void shadow(const Instance &inst, IRect clip) {
+    const int x0 = static_cast<int>(inst.x), y0 = static_cast<int>(inst.y);
+    const IRect r = intersect({x0, y0, static_cast<int>(inst.w), static_cast<int>(inst.h)}, clip);
+    if (r.empty()) return;
+    const float blur = inst.v0, offset = inst.v1;
+    const float half_w = inst.w / 2 - blur, half_h = inst.h / 2 - blur;
+    const float radius = std::min({inst.u0, half_w, half_h});
+    for (int y = r.y; y < r.y + r.h; ++y) {
+      uint32_t *row = pixels_.data() + static_cast<size_t>(y) * width_;
+      const float py = static_cast<float>(y - y0) + 0.5f;
+      for (int x = r.x; x < r.x + r.w; ++x) {
+        const float px = static_cast<float>(x - x0) + 0.5f;
+        const float inside = rounded_distance(px - blur, py - blur + offset, half_w, half_h, radius);
+        if (inside < -0.5f) continue;
+        const float edge = std::clamp((rounded_distance(px - blur, py - blur, half_w, half_h, radius) + blur) / (2 * blur), 0.f, 1.f);
+        const float cover = (1 - edge * edge * (3 - 2 * edge)) * smooth_coverage(-inside);
+        if (cover <= 0) continue;
+        row[x] = over(premultiply(inst.rgba, static_cast<uint32_t>(cover * 255 + 0.5f)), row[x]);
+      }
+    }
+  }
+
   void rounded(const Instance &inst, IRect clip) {
     const int x0 = static_cast<int>(inst.x), y0 = static_cast<int>(inst.y);
     const int w = static_cast<int>(inst.w), h = static_cast<int>(inst.h);
@@ -206,6 +275,8 @@ class Cpu final : public CpuBackend {
     const int ax = static_cast<int>(inst.u0), ay = static_cast<int>(inst.v0);
     const bool color = (inst.flags & InstColorGlyph) != 0;
     const uint32_t tint_alpha = inst.rgba >> 24;
+    const bool horizontal = (inst.flags & InstGradient) != 0, vertical = (inst.flags & InstGradientV) != 0;
+    const Premul from = unpack(inst.rgba), to = horizontal || vertical ? unpack_end(inst) : from;
 
     for (int y = r.y; y < r.y + r.h; ++y) {
       const uint8_t *src = page.pixels.data() + (static_cast<size_t>(ay + y - y0) * page.width + static_cast<size_t>(ax + r.x - x0)) * 4;
@@ -216,6 +287,9 @@ class Cpu final : public CpuBackend {
         uint32_t pixel;
         if (color) {
           pixel = mul(src[0], tint_alpha) | (mul(src[1], tint_alpha) << 8) | (mul(src[2], tint_alpha) << 16) | (mul(texel_alpha, tint_alpha) << 24);
+        } else if (horizontal || vertical) {
+          const float t = vertical ? (static_cast<float>(y - y0) + 0.5f) / inst.h : (static_cast<float>(r.x + x - x0) + 0.5f) / inst.w;
+          pixel = mixed_pixel(from, to, t, static_cast<float>(texel_alpha) / 255);
         } else {
           pixel = premultiply(inst.rgba, texel_alpha);
         }

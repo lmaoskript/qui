@@ -48,13 +48,15 @@ struct Node {
   uint8_t w_mode = 0, h_mode = 0;
   uint8_t multiline = 0, focus_mode = 0;
   bool mono = false, clip = false, scroll = false, ellipsis = false, has_pos = false, bottom = false;
-  bool password = false, placeholder_shown = false;
+  bool password = false, placeholder_shown = false, has_gradient = false, has_scroll_to = false;
   float w_val = 0, h_val = 0, min_w = 0, max_w = 0, min_h = 0, max_h = 0;
   float pad[4] = {};
   float gap = 0, pos_x = 0, pos_y = 0;
   int32_t z = 0;
   uint32_t bg = 0, fg = 0, border = 0;
   float border_w = 0, radius = 0, opacity = 1, font_size = 0;
+  uint32_t gradient_from = 0, gradient_to = 0, shadow = 0;
+  float gradient_angle = 0, shadow_blur = 0, shadow_y = 0, tracking = 0, scroll_to = 0;
   std::string_view text, label, src, placeholder;
   uint32_t count = 0;
   float est = 0;
@@ -72,6 +74,9 @@ enum InstanceFlag : uint32_t {
   InstGlyph = 1u << 1,
   InstColorGlyph = 1u << 2,
   InstRounded = 1u << 3,
+  InstGradient = 1u << 4,
+  InstGradientV = 1u << 5,
+  InstShadow = 1u << 6,
 };
 
 struct Instance {
@@ -80,6 +85,21 @@ struct Instance {
   uint32_t rgba;
   uint32_t flags;
 };
+
+inline float encode_color_high(uint32_t color) { return static_cast<float>(color >> 16); }
+inline float encode_color_low(uint32_t color) { return static_cast<float>(color & 0xffffu); }
+
+inline uint32_t mix_colors(uint32_t a, uint32_t b, float t) {
+  const float alpha_a = static_cast<float>(a & 0xffu) * (1 - t), alpha_b = static_cast<float>(b & 0xffu) * t;
+  const float alpha = alpha_a + alpha_b;
+  if (alpha <= 0) return 0;
+  uint32_t out = static_cast<uint32_t>(alpha + 0.5f);
+  for (const int shift : {24, 16, 8}) {
+    const float channel = (static_cast<float>((a >> shift) & 0xffu) * alpha_a + static_cast<float>((b >> shift) & 0xffu) * alpha_b) / alpha;
+    out |= static_cast<uint32_t>(channel + 0.5f) << shift;
+  }
+  return out;
+}
 static_assert(sizeof(Instance) == 40);
 
 struct RoundClip {
@@ -268,6 +288,7 @@ class Engine {
   void paint_text(const Node &node, float opacity, IRect clip, float dx = 0, float dy = 0, uint32_t color_override = 0);
   void paint_input(const Node &node, float alpha, IRect clip);
   void add_rect(float x, float y, float w, float h, uint32_t color, float radius, float stroke, IRect clip);
+  void add_gradient(float x, float y, float w, float h, uint32_t from, uint32_t to, float angle, float radius, IRect clip);
   void add_scrollbar(const Node &node, float alpha, IRect clip, float position, float fraction);
   void add_instance(const Instance &instance, int page, IRect clip);
   void prune();

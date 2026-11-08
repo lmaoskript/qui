@@ -47,6 +47,7 @@ struct ShapingOptions {
   FontInstanceId default_font = 0;
   uint32_t default_color = 0xffffffffu;
   bool ligatures_enabled = true;
+  float tracking = 0.0f;
 };
 
 class TextShaper {
@@ -93,6 +94,7 @@ class TextShaper {
   std::vector<Run> scratch_runs_;
   std::vector<uint8_t> scratch_levels_;
   std::string scratch_key_;
+  float scratch_tracking_ = 0.0f;
   size_t cache_bytes_ = 0;
   uint64_t shape_calls_ = 0;
   uint64_t cache_hits_ = 0;
@@ -101,7 +103,7 @@ class TextShaper {
   void make_runs(std::vector<Run> &runs, uint32_t text_size,
                  std::span<const TextStyleSpan> styles, ShapingOptions options);
   static void make_cache_key(std::string &key, std::string_view text,
-                             const std::vector<Run> &runs);
+                             const std::vector<Run> &runs, float tracking);
   const ShapedLine &shape_from_runs(std::string_view utf8);
 };
 

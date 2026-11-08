@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 3
+version 4
 
 kind Box 0
 kind Text 1
@@ -73,6 +73,10 @@ op Multiline 36
 op Password 37
 op Focus 38
 op Z 39
+op Gradient 40
+op Shadow 41
+op Tracking 42
+op ScrollTo 43
 
 key Backspace 8
 key Tab 9

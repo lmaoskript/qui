@@ -42,7 +42,10 @@ type Style struct {
 	Bg, Fg, Border         Color
 	BorderW, Radius        float32
 	Opacity                float32
+	Gradient               Gradient
+	Shadow                 BoxShadow
 	Clip, Scroll, Hit      bool
+	ScrollTo               *float32
 	Role                   Role
 	Label, Key             string
 }
@@ -54,6 +57,24 @@ type TextStyle struct {
 	W                    Size
 	Align                Align
 	Role                 Role
+	Gradient             Gradient
+	Tracking             float32
+}
+
+// Gradient is a two-color linear gradient. Angle is in CSS degrees: 0 runs
+// bottom to top, 90 left to right, 180 top to bottom. On text it runs across
+// the text box and only follows the axis nearest to Angle.
+type Gradient struct {
+	From, To Color
+	Angle    float32
+}
+
+// BoxShadow paints outside a box, like a CSS box-shadow. Use a bright Color
+// and no Y for a glow.
+type BoxShadow struct {
+	Color Color
+	Blur  float32
+	Y     float32
 }
 
 var (
@@ -200,6 +221,10 @@ func (u *Ui) Text(value string, style ...TextStyle) {
 	}
 	if t.Role != 0 {
 		u.u8Op(opRole, uint8(t.Role))
+	}
+	u.emitGradient(t.Gradient)
+	if t.Tracking != 0 {
+		u.f32Op(opTracking, t.Tracking)
 	}
 	u.u8(opEnd)
 }
@@ -428,6 +453,16 @@ func (u *Ui) open(kind uint8, key string) uint64 {
 	return id
 }
 
+func (u *Ui) emitGradient(g Gradient) {
+	if g.From == 0 && g.To == 0 {
+		return
+	}
+	u.u8(opGradient)
+	u.u32(uint32(g.From))
+	u.u32(uint32(g.To))
+	u.f32(g.Angle)
+}
+
 func (u *Ui) emitStyle(s *Style) {
 	u.sizeOp(opWidth, s.W)
 	u.sizeOp(opHeight, s.H)
@@ -488,11 +523,21 @@ func (u *Ui) emitStyle(s *Style) {
 	if s.Opacity != 0 {
 		u.f32Op(opOpacity, s.Opacity)
 	}
+	u.emitGradient(s.Gradient)
+	if s.Shadow.Color != 0 {
+		u.u8(opShadow)
+		u.u32(uint32(s.Shadow.Color))
+		u.f32(s.Shadow.Blur)
+		u.f32(s.Shadow.Y)
+	}
 	if s.Clip {
 		u.u8(opClip)
 	}
 	if s.Scroll {
 		u.u8(opScroll)
+	}
+	if s.ScrollTo != nil {
+		u.f32Op(opScrollTo, *s.ScrollTo)
 	}
 	if s.Hit {
 		u.u8Op(opHit, 1)

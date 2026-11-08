@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -35,6 +36,16 @@ struct Edges {
   constexpr Edges(float t, float r, float b, float l) : top(t), right(r), bottom(b), left(l) {}
 };
 
+struct Gradient {
+  Color from = 0, to = 0;
+  float angle = 0;
+};
+
+struct BoxShadow {
+  Color color = 0;
+  float blur = 0, y = 0;
+};
+
 struct Style {
   Size w{}, h{};
   float min_w = 0, max_w = 0, min_h = 0, max_h = 0;
@@ -46,7 +57,10 @@ struct Style {
   int32_t z = 0;
   Color bg = 0, fg = 0, border = 0;
   float border_w = 0, radius = 0, opacity = 0;
+  Gradient gradient{};
+  BoxShadow shadow{};
   bool clip = false, scroll = false, hit = false;
+  std::optional<float> scroll_to{};
   uint8_t role = 0;
   std::string_view label{}, key{};
 };
@@ -58,6 +72,8 @@ struct TextStyle {
   Size w{};
   uint8_t align = 0;
   uint8_t role = 0;
+  Gradient gradient{};
+  float tracking = 0;
 };
 
 inline constexpr TextStyle Body{};
@@ -169,6 +185,8 @@ class Ui {
     size_op(wire::OpWidth, style.w);
     if (style.align) u8_op(wire::OpJustify, style.align);
     if (style.role) u8_op(wire::OpRole, style.role);
+    emit_gradient(style.gradient);
+    if (style.tracking) f32_op(wire::OpTracking, style.tracking);
     u8(wire::OpEnd);
   }
 
@@ -327,6 +345,14 @@ class Ui {
     return id;
   }
 
+  void emit_gradient(const Gradient &g) {
+    if (!g.from && !g.to) return;
+    u8(wire::OpGradient);
+    u32(g.from);
+    u32(g.to);
+    f32(g.angle);
+  }
+
   void emit_style(const Style &s) {
     size_op(wire::OpWidth, s.w);
     size_op(wire::OpHeight, s.h);
@@ -359,8 +385,16 @@ class Ui {
     }
     if (s.radius) f32_op(wire::OpRadius, s.radius);
     if (s.opacity) f32_op(wire::OpOpacity, s.opacity);
+    emit_gradient(s.gradient);
+    if (s.shadow.color) {
+      u8(wire::OpShadow);
+      u32(s.shadow.color);
+      f32(s.shadow.blur);
+      f32(s.shadow.y);
+    }
     if (s.clip) u8(wire::OpClip);
     if (s.scroll) u8(wire::OpScroll);
+    if (s.scroll_to) f32_op(wire::OpScrollTo, *s.scroll_to);
     if (s.hit) u8_op(wire::OpHit, 1);
     if (s.role) u8_op(wire::OpRole, s.role);
     if (!s.label.empty()) str(wire::OpLabel, s.label);

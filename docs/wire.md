@@ -25,6 +25,10 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `Focus` | `u8`, 1 to focus on first appearance, 2 to focus now |
 | `Pos` | `x:f32 y:f32` |
 | `Z` | `i32`, paint and hit order among siblings; ties keep tree order |
+| `Gradient` | `from:u32 to:u32 angle:f32`, CSS degrees; fills a box, or colors the glyphs of a `Text` |
+| `Shadow` | `color:u32 blur:f32 y:f32`, painted outside the box only |
+| `Tracking` | `f32`, extra advance per letter in logical px; turns ligatures off when nonzero |
+| `ScrollTo` | `f32`, sets the scroll offset of a `Scroll` box this frame |
 | `Bg`, `Fg` | `color:u32` |
 | `Border` | `color:u32 width:f32` |
 | `Clip`, `Scroll`, `Mono`, `Ellipsis`, `Password` | none |
