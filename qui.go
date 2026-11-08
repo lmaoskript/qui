@@ -155,7 +155,8 @@ func (u *Ui) Dt() float32       { return u.header(20) }
 func (u *Ui) PointerX() float32 { return u.header(24) }
 func (u *Ui) PointerY() float32 { return u.header(28) }
 
-// PointerDown reports whether the primary pointer button is held anywhere.
+// PointerDown reports whether the primary pointer button is held anywhere, or
+// was pressed since the last frame, so a tap shorter than a frame still counts.
 func (u *Ui) PointerDown() bool {
 	return len(u.res) >= resultsHeader && binary.LittleEndian.Uint32(u.res[44:]) != 0
 }

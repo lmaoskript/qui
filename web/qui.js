@@ -443,6 +443,7 @@ class Patcher {
     this.root.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       this.down = true;
+      this.tapped = true;
       this.swallowClick = false;
       this.movePointer(e);
       this.requestFrame();
@@ -765,7 +766,8 @@ class Patcher {
     view.setFloat32(20, (now - this.lastTime) / 1000, true);
     view.setFloat32(24, this.pointer[0], true);
     view.setFloat32(28, this.pointer[1], true);
-    view.setUint32(44, this.down ? 1 : 0, true);
+    view.setUint32(44, this.down || this.tapped ? 1 : 0, true);
+    this.tapped = false;
     view.setFloat32(48, this.engineMs, true);
     const origin = this.root.getBoundingClientRect();
     this.lastTime = now;

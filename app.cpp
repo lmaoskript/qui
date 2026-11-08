@@ -169,7 +169,7 @@ struct qui_app {
   float drag_dx = 0, drag_dy = 0;
   uint64_t hovered = 0, pressed = 0, focused = 0, clicked = 0, right_clicked = 0;
   uint64_t drag_start = 0, drag_end = 0;
-  bool dragging = false, focus_ring = false, selecting = false, caret_on = true, text_cursor = false, pointer_down = false;
+  bool dragging = false, focus_ring = false, selecting = false, caret_on = true, text_cursor = false, pointer_down = false, pointer_tapped = false;
   float engine_ms = 0;
   std::vector<uint32_t> keys;
   std::string clipboard, text_blob;
@@ -604,6 +604,7 @@ struct qui_app {
         update_hover();
         if (e.button.button == SDL_BUTTON_LEFT) {
           pointer_down = true;
+          pointer_tapped = true;
           pressed = hovered;
           set_focus(hovered, false);
           press_x = pointer_x;
@@ -858,7 +859,8 @@ struct qui_app {
     results.assign(text_at + text_blob.size(), 0);
     uint8_t *p = results.data();
     const float header[] = {logical_w, logical_h, dpr, dt, pointer_x, pointer_y};
-    const uint32_t offsets[] = {static_cast<uint32_t>(keys_at), static_cast<uint32_t>(keys.size() / 2), static_cast<uint32_t>(text_at), pointer_down ? 1u : 0u};
+    const uint32_t offsets[] = {static_cast<uint32_t>(keys_at), static_cast<uint32_t>(keys.size() / 2), static_cast<uint32_t>(text_at), pointer_down || pointer_tapped ? 1u : 0u};
+    pointer_tapped = false;
     std::memcpy(p, &kMagic, 4);
     std::memcpy(p + 4, &capacity, 4);
     std::memcpy(p + 8, header, sizeof(header));
