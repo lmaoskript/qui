@@ -1,6 +1,6 @@
 ---
 name: qui
-description: Build, change or verify UIs with qui, the in-house immediate-mode framework (Go or C++; native through OpenGL ES or a CPU rasterizer, browser through real DOM elements and Go wasm). Use when a project imports github.com/torisetxd/qui or includes qui.hpp, or when asked to add a screen, widget, list or shader to a qui app.
+description: Build, change or verify UIs with qui, the in-house immediate-mode framework (Go or C++; native through OpenGL ES or a CPU rasterizer, browser through real DOM elements and Go wasm), and its qui/sys module for Linux app install, background services and screen or microphone capture. Use when a project imports github.com/torisetxd/qui or includes qui.hpp, or when asked to add a screen, widget, list or shader to a qui app, or to install a native app or capture the screen or mic with it.
 ---
 
 # qui
@@ -206,7 +206,53 @@ Native needs `sdl3 freetype2 harfbuzz fontconfig` through pkg-config.
 </script>
 ```
 
-On Linux, `SetAppID` must equal the app's `.desktop` basename or the compositor shows the wrong icon and name.
+On Linux, `SetAppID` must equal the app's `.desktop` basename or the compositor shows the wrong icon and name. `sys.Install` writes that file.
+
+## Linux install, services and capture
+
+`github.com/torisetxd/qui/sys` does not link the UI, so daemons can use it. It needs `gio-2.0 gio-unix-2.0 libpipewire-0.3`. C++ uses `sys/qui_sys.h` and `sys/qui_sys.hpp`, and links the `qui_sys` target.
+
+```go
+package main
+
+import (
+	"errors"
+	"log"
+	"time"
+
+	"github.com/torisetxd/qui/sys"
+)
+
+func main() {
+	const id = "dev.example.recorder"
+	app := sys.App{ID: id, Name: "Recorder", Service: &sys.Service{Args: "--background", NeedsPipeWire: true}}
+	if err := sys.Install(app); err != nil {
+		log.Fatal(err)
+	}
+	screen, err := sys.OpenScreen(sys.ScreenOptions{AppID: id, FPS: 30, ShowCursor: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer screen.Close()
+	for {
+		frame, err := screen.Next(0, time.Second)
+		if errors.Is(err, sys.ErrTimeout) {
+			continue
+		}
+		if err != nil {
+			return
+		}
+		log.Println(frame.Width, frame.Height, frame.Sequence)
+	}
+}
+```
+
+- **Use one id everywhere**: `qui.SetAppID`, `App.ID` and `ScreenOptions.AppID`. It becomes the `.desktop` name, portal identity, unit `app-<id>.service` and `$XDG_STATE_HOME/<id>`.
+- **`Install` before the first `OpenScreen`.** It is safe on every launch and leaves a service the user disabled alone. `Exec` defaults to the running binary and must be absolute; `InstallAs` copies the binary to `~/.local/bin`.
+- `OpenScreen` shows the portal dialog once and saves the permission; later runs restore it. Use `Slot` to hold several. `Multiple` and `Windows` widen the picker, `NoPersist` keeps nothing.
+- `Next(stream, timeout)` returns the newest BGRx frame, valid until the next `Next` on that stream. Use one goroutine per stream. Retry on `ErrTimeout`; `ErrClosed` means sharing stopped.
+- `sys.OpenAudio(sys.AudioOptions{})` captures the microphone, `System: true` the default output, `Target` a PipeWire node. `Read(buf, timeout)` fills interleaved `float32` and returns frames and the monotonic time of the first.
+- Also: `Uninstall StartService StopService RestartService EnableService DisableService ServiceActive Register`.
 
 ## Verify without a window
 
@@ -225,6 +271,6 @@ Any of the first three variables runs the app offscreen for a few frames and exi
 
 ## Not available yet
 
-Do not assume these exist: images, touch gestures, Android builds, Windows, right-to-left text editing. On the web, `Response` has no drag flags or `X Y W H`, and list spacers use the estimate, so the scrollbar can shift when real heights differ.
+Do not assume these exist: images, touch gestures, Android builds, Windows, right-to-left text editing, global shortcuts. On the web, `Response` has no drag flags or `X Y W H`, and list spacers use the estimate, so the scrollbar can shift when real heights differ.
 
 To add a node kind, op or token, edit `spec.txt` and run `go run ./tools/gen`; `docs/wire.md` documents the format.
