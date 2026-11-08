@@ -257,7 +257,7 @@ function css(node, parent) {
   if (node.kind === Kind.Text || node.kind === Kind.Button || node.kind === Kind.Input) {
     const size = node.fontSize || 14;
     s += `font-size:${size}px;line-height:${Math.ceil(size * 1.4)}px;`;
-    if (node.weight) s += "font-weight:600;";
+    s += node.weight ? "font-weight:600;" : "font-weight:400;";
     if (node.mono) s += "font-family:var(--qui-mono);";
     if (node.tracking) s += `letter-spacing:${node.tracking}px;`;
     if (node.ellipsis) s += "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
