@@ -103,11 +103,30 @@ bool in_flow(const Node &node) { return !node.has_pos; }
 
 bool is_text_leaf(const Node &node) { return node.kind == KindText || node.kind == KindButton; }
 
+constexpr float kScrollbarZone = 12;
+
 }  // namespace
 
 float ListState::height(uint32_t index) const {
   const auto it = heights.find(index);
   return it != heights.end() ? it->second : est;
+}
+
+float ListState::average() const {
+  if (heights.empty()) return est + gap;
+  float known = 0;
+  for (const auto &kv : heights) known += kv.second + gap;
+  return known / static_cast<float>(heights.size());
+}
+
+void ListState::jump(float fraction) {
+  if (count == 0) return;
+  const float pitch = average();
+  const float position = fraction * std::max(1.f, pitch * static_cast<float>(count) - viewport) / pitch;
+  anchor = std::min(static_cast<uint32_t>(position), count - 1);
+  offset = (position - static_cast<float>(anchor)) * height(anchor);
+  stuck = bottom && fraction >= 0.999f;
+  jumped = true;
 }
 
 void ListState::scroll_by(float delta) {
@@ -593,11 +612,16 @@ void Engine::place_list(Node &node) {
       break;
     }
   }
+  const bool stale = anchor_index < 0 && state.jumped;
   if (anchor_index < 0) {
     wants_another_frame = true;
     anchor_index = 0;
-    state.anchor = static_cast<uint32_t>(items[0]->item);
-    state.offset = 0;
+    if (!stale) {
+      state.anchor = static_cast<uint32_t>(items[0]->item);
+      state.offset = 0;
+    }
+  } else {
+    state.jumped = false;
   }
 
   const auto position = [&](float anchor_y) {
@@ -617,6 +641,7 @@ void Engine::place_list(Node &node) {
 
   float anchor_y = top - state.offset;
   position(anchor_y);
+  if (stale) return;
 
   Node &last = *items.back();
   const bool reached_end = last.item + 1 == static_cast<int64_t>(state.count);
@@ -926,36 +951,52 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
   paint_children(node, alpha, child_clip);
   scroll_parent_ = outer_scroll;
 
-  const auto scrollbar = [&](float position, float fraction) {
-    if (fraction >= 1) return;
-    const float track = h;
-    const float thumb = std::max(24 * dpr, track * fraction);
-    const float bar_w = std::round(4 * dpr);
-    const uint32_t color = resolve(node.id == hovered ? ScrollbarHot : Scrollbar);
-    add_rect(x1 - bar_w - std::round(2 * dpr), y0 + std::round((track - thumb) * position), bar_w, std::round(thumb), fade(color), bar_w / 2, 0, child_clip);
-  };
-
   if (node.kind == KindList) {
     const auto it = lists.find(node.id);
     if (it != lists.end() && it->second.count) {
       const ListState &state = it->second;
-      float known = 0;
-      for (const auto &kv : state.heights) known += kv.second + state.gap;
-      const auto seen = static_cast<float>(state.heights.size());
-      const float average = seen > 0 ? known / seen : state.est + state.gap;
+      const float average = state.average();
       const float total = average * static_cast<float>(state.count);
       const float along = (static_cast<float>(state.anchor) + state.offset / std::max(1.f, state.height(state.anchor))) * average;
       const float range = std::max(1.f, total - state.viewport);
-      scrollbar(std::clamp(along / range, 0.f, 1.f), state.viewport / std::max(1.f, total));
+      add_scrollbar(node, alpha, child_clip, std::clamp(along / range, 0.f, 1.f), state.viewport / std::max(1.f, total));
     }
   } else if (node.scroll) {
     const auto it = scrolls.find(node.id);
     if (it != scrolls.end() && it->second.content > it->second.viewport) {
       const ScrollState &state = it->second;
-      scrollbar(state.offset / (state.content - state.viewport), state.viewport / state.content);
+      add_scrollbar(node, alpha, child_clip, state.offset / (state.content - state.viewport), state.viewport / state.content);
     }
   }
   round_clip_ = outer_round;
+}
+
+void Engine::add_scrollbar(const Node &node, float alpha, IRect clip, float position, float fraction) {
+  if (fraction >= 1) return;
+  const float y0 = std::round(node.y * dpr), x1 = std::round((node.x + node.w) * dpr);
+  const float track = std::round((node.y + node.h) * dpr) - y0;
+  const float thumb = std::max(24 * dpr, track * fraction);
+  const float thumb_top = std::round((track - thumb) * position);
+  const bool hot = node.id == ui.scrollbar;
+  const float bar_w = std::round((hot ? 7.f : 4.f) * dpr);
+  uint32_t color = resolve(hot || node.id == ui.hovered ? ScrollbarHot : Scrollbar);
+  color = (color & 0xffffff00u) | std::min(static_cast<uint32_t>(static_cast<float>(color & 0xffu) * alpha + 0.5f), 255u);
+  add_rect(x1 - bar_w - std::round(2 * dpr), y0 + thumb_top, bar_w, std::round(thumb), color, bar_w / 2, 0, clip);
+
+  HitEntry hit;
+  hit.id = node.id;
+  hit.x = node.x + node.w - kScrollbarZone;
+  hit.y = node.y;
+  hit.w = kScrollbarZone;
+  hit.h = node.h;
+  hit.cx0 = static_cast<float>(clip.x) / dpr;
+  hit.cy0 = static_cast<float>(clip.y) / dpr;
+  hit.cx1 = static_cast<float>(clip.x + clip.w) / dpr;
+  hit.cy1 = static_cast<float>(clip.y + clip.h) / dpr;
+  hit.scroll = hit.scrollbar = true;
+  hit.thumb_y = node.y + thumb_top / dpr;
+  hit.thumb_h = thumb / dpr;
+  hits.push_back(hit);
 }
 
 void Engine::paint_children(const Node &node, float opacity, IRect clip) {

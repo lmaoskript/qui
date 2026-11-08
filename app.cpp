@@ -168,7 +168,8 @@ struct qui_app {
   float press_x = 0, press_y = 0;
   float drag_dx = 0, drag_dy = 0;
   uint64_t hovered = 0, pressed = 0, focused = 0, clicked = 0, right_clicked = 0;
-  uint64_t drag_start = 0, drag_end = 0;
+  uint64_t drag_start = 0, drag_end = 0, scrollbar_hovered = 0, scrollbar_dragged = 0;
+  float scrollbar_grab = 0;
   bool dragging = false, focus_ring = false, selecting = false, caret_on = true, text_cursor = false, pointer_down = false, pointer_tapped = false;
   float engine_ms = 0;
   std::vector<uint32_t> keys;
@@ -299,8 +300,39 @@ struct qui_app {
     return 0;
   }
 
+  const HitEntry *scrollbar_at(float x, float y) const {
+    const auto &hits = engine.hits;
+    for (auto it = hits.rbegin(); it != hits.rend(); ++it) {
+      if (!it->press && !it->scroll) continue;
+      if (x < it->x || x >= it->x + it->w || y < it->y || y >= it->y + it->h || x < it->cx0 || x >= it->cx1 || y < it->cy0 || y >= it->cy1) continue;
+      return it->scrollbar ? &*it : nullptr;
+    }
+    return nullptr;
+  }
+
+  void drag_scrollbar() {
+    const auto &hits = engine.hits;
+    const auto bar = std::find_if(hits.rbegin(), hits.rend(), [&](const HitEntry &e) { return e.scrollbar && e.id == scrollbar_dragged; });
+    if (bar == hits.rend()) return;
+    const float room = bar->h - bar->thumb_h;
+    const float fraction = room > 0 ? std::clamp((pointer_y - bar->y - scrollbar_grab) / room, 0.f, 1.f) : 0;
+    if (const auto input = engine.inputs.find(bar->id); input != engine.inputs.end()) {
+      input->second.scroll_y = fraction * input->second.scroll_limit_y;
+    } else if (const auto list = engine.lists.find(bar->id); list != engine.lists.end()) {
+      list->second.jump(fraction);
+    } else if (const auto scroll = engine.scrolls.find(bar->id); scroll != engine.scrolls.end()) {
+      scroll->second.offset = fraction * std::max(0.f, scroll->second.content - scroll->second.viewport);
+    }
+    dirty = true;
+  }
+
   void update_hover() {
-    const uint64_t id = hit_test(pointer_x, pointer_y, false);
+    const HitEntry *bar = scrollbar_at(pointer_x, pointer_y);
+    if (const uint64_t bar_id = bar ? bar->id : 0; bar_id != scrollbar_hovered) {
+      scrollbar_hovered = bar_id;
+      dirty = true;
+    }
+    const uint64_t id = bar ? 0 : hit_test(pointer_x, pointer_y, false);
     if (id != hovered) {
       hovered = id;
       dirty = true;
@@ -575,6 +607,10 @@ struct qui_app {
         const float dx = x - pointer_x, dy = y - pointer_y;
         pointer_x = x;
         pointer_y = y;
+        if (scrollbar_dragged) {
+          drag_scrollbar();
+          break;
+        }
         update_hover();
         if (selecting) {
           if (InputState *state = focused_input()) {
@@ -605,6 +641,14 @@ struct qui_app {
         if (e.button.button == SDL_BUTTON_LEFT) {
           pointer_down = true;
           pointer_tapped = true;
+          if (const HitEntry *bar = scrollbar_at(pointer_x, pointer_y)) {
+            scrollbar_dragged = bar->id;
+            const bool on_thumb = pointer_y >= bar->thumb_y && pointer_y < bar->thumb_y + bar->thumb_h;
+            scrollbar_grab = on_thumb ? pointer_y - bar->thumb_y : bar->thumb_h / 2;
+            if (!on_thumb) drag_scrollbar();
+            dirty = true;
+            break;
+          }
           pressed = hovered;
           set_focus(hovered, false);
           press_x = pointer_x;
@@ -628,6 +672,7 @@ struct qui_app {
         if (e.button.button == SDL_BUTTON_RIGHT && hovered) right_clicked = hovered;
         if (e.button.button == SDL_BUTTON_LEFT) {
           pointer_down = false;
+          scrollbar_dragged = 0;
           if (dragging) drag_end = pressed;
           else if (pressed && pressed == hovered) clicked = pressed;
           pressed = 0;
@@ -870,6 +915,7 @@ struct qui_app {
     if (!text_blob.empty()) std::memcpy(p + text_at, text_blob.data(), text_blob.size());
 
     for (const HitEntry &hit : engine.hits) {
+      if (hit.scrollbar) continue;
       uint32_t flags = 0;
       if (hit.id == hovered) flags |= wire::FlagHovered;
       if (hit.id == pressed) flags |= wire::FlagPressed;
@@ -933,7 +979,7 @@ struct qui_app {
       set_focus(engine.focus_request, false);
       engine.focus_request = 0;
     }
-    engine.ui = {hovered, pressed, focused, focus_ring, headless || caret_on};
+    engine.ui = {hovered, pressed, focused, focus_ring, headless || caret_on, scrollbar_dragged ? scrollbar_dragged : scrollbar_hovered};
     engine.paint();
     if (focused && std::none_of(engine.hits.begin(), engine.hits.end(), [&](const HitEntry &e) { return e.id == focused; })) set_focus(0, false);
     update_ime_area();
@@ -953,7 +999,7 @@ struct qui_app {
     if (!damage.empty() && !headless) present(gl ? full : damage);
     if (animating()) next_tick = now() + tick_interval();
     if (engine.wants_another_frame) dirty = true;
-    if (!headless) update_hover();
+    if (!headless && !scrollbar_dragged) update_hover();
     const double t = now();
     dt = static_cast<float>(t - last_frame_time);
     last_frame_time = t;

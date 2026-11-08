@@ -385,7 +385,8 @@ void Engine::paint_input(const Node &node, float alpha, IRect clip) {
     state.reveal = false;
   }
   state.scroll_x = std::clamp(state.scroll_x, 0.f, std::max(0.f, content_w + caret_w - inner_w));
-  state.scroll_y = std::clamp(state.scroll_y, 0.f, std::max(0.f, content_h - inner_h));
+  state.scroll_limit_y = std::max(0.f, content_h - inner_h);
+  state.scroll_y = std::clamp(state.scroll_y, 0.f, state.scroll_limit_y);
 
   const float top = input_text_top(node, state);
   const auto fade = [&](uint32_t c) {
@@ -424,6 +425,8 @@ void Engine::paint_input(const Node &node, float alpha, IRect clip) {
     const uint32_t color = ui.caret_on ? fade(resolve(node.fg ? node.fg : Ink)) : 0;
     add_rect(std::round(left + caret_x - state.scroll_x), std::round(top + line_height * static_cast<float>(caret_line)), caret_w, line_height, color, 0, 0, inner);
   }
+
+  if (state.multiline && state.scroll_limit_y > 0) add_scrollbar(node, alpha, clip, state.scroll_y / state.scroll_limit_y, inner_h / content_h);
 }
 
 }  // namespace qui

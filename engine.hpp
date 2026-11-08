@@ -140,7 +140,8 @@ struct HitEntry {
   uint64_t id = 0;
   float x = 0, y = 0, w = 0, h = 0;
   float cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0;
-  bool press = false, scroll = false, focusable = false;
+  bool press = false, scroll = false, focusable = false, scrollbar = false;
+  float thumb_y = 0, thumb_h = 0;
   int32_t scroll_parent = -1;
 };
 
@@ -152,12 +153,14 @@ struct ScrollState {
 struct ListState {
   uint32_t anchor = 0, count = 0, first = 0, visible = 0;
   float offset = 0, est = 32, gap = 0, viewport = 0;
-  bool seen = false, bottom = false, stuck = true;
+  bool seen = false, bottom = false, stuck = true, jumped = false;
   uint64_t frame = 0;
   std::unordered_map<uint32_t, float> heights;
 
   float height(uint32_t index) const;
+  float average() const;
   void scroll_by(float delta);
+  void jump(float fraction);
   void compute_range();
 };
 
@@ -173,7 +176,7 @@ struct InputState {
   int node = -1;
   std::string text, seen, display, preedit, placeholder;
   size_t caret = 0, anchor = 0, preedit_cursor = 0, last_end = 0;
-  float scroll_x = 0, scroll_y = 0, goal_x = -1;
+  float scroll_x = 0, scroll_y = 0, scroll_limit_y = 0, goal_x = -1;
   bool changed = false, submitted = false, multiline = false, submit_on_enter = false, password = false, reveal = true;
   EditKind last_edit = EditKind::None;
   std::vector<Snapshot> undo, redo;
@@ -202,6 +205,7 @@ std::string clean_input(std::string_view text, bool multiline);
 struct Interaction {
   uint64_t hovered = 0, pressed = 0, focused = 0;
   bool focus_ring = false, caret_on = true;
+  uint64_t scrollbar = 0;
 };
 
 class Engine {
@@ -261,6 +265,7 @@ class Engine {
   void paint_text(const Node &node, float opacity, IRect clip, float dx = 0, float dy = 0, uint32_t color_override = 0);
   void paint_input(const Node &node, float alpha, IRect clip);
   void add_rect(float x, float y, float w, float h, uint32_t color, float radius, float stroke, IRect clip);
+  void add_scrollbar(const Node &node, float alpha, IRect clip, float position, float fraction);
   void add_instance(const Instance &instance, int page, IRect clip);
   void prune();
 };
