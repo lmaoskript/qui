@@ -220,8 +220,9 @@ const char *const kShaderFooter = R"(
 uniform vec2 qui_fb;
 uniform vec4 qui_clip;
 uniform float qui_clip_radius;
+uniform float qui_opacity;
 void main() {
-  vec4 color = shade(v_uv);
+  vec4 color = shade(v_uv) * qui_opacity;
   if (qui_clip_radius > 0.0) {
     vec2 half_size = qui_clip.zw * 0.5;
     vec2 q = abs(vec2(gl_FragCoord.x, qui_fb.y - gl_FragCoord.y) - qui_clip.xy - half_size) - half_size + vec2(qui_clip_radius);
@@ -347,7 +348,7 @@ class GlBackend final : public Backend {
  private:
   struct Program {
     GLuint id = 0;
-    GLint rect = -1, fb = -1, time = -1, resolution = -1, clip = -1, clip_radius = -1;
+    GLint rect = -1, fb = -1, time = -1, resolution = -1, clip = -1, clip_radius = -1, opacity = -1;
     uint64_t used = 0;
     std::string error;
     std::unordered_map<std::string, std::pair<GLint, GLenum>> uniforms;
@@ -428,6 +429,7 @@ class GlBackend final : public Backend {
     program.resolution = gl_.GetUniformLocation(program.id, "u_resolution");
     program.clip = gl_.GetUniformLocation(program.id, "qui_clip");
     program.clip_radius = gl_.GetUniformLocation(program.id, "qui_clip_radius");
+    program.opacity = gl_.GetUniformLocation(program.id, "qui_opacity");
     GLint count = 0;
     gl_.GetProgramiv(program.id, GL_ACTIVE_UNIFORMS, &count);
     for (GLint i = 0; i < count; ++i) {
@@ -449,6 +451,7 @@ class GlBackend final : public Backend {
     gl_.Uniform2f(program.fb, static_cast<float>(width_), static_cast<float>(height_));
     gl_.Uniform4f(program.clip, static_cast<float>(round.x), static_cast<float>(round.y), static_cast<float>(round.w), static_cast<float>(round.h));
     gl_.Uniform1f(program.clip_radius, round.radius);
+    gl_.Uniform1f(program.opacity, draw.opacity);
     if (program.time >= 0) gl_.Uniform1f(program.time, static_cast<float>(time));
     if (program.resolution >= 0) gl_.Uniform2f(program.resolution, static_cast<float>(draw.rect.w), static_cast<float>(draw.rect.h));
     for (const ShaderUniform &uniform : draw.uniforms) {

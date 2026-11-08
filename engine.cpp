@@ -990,6 +990,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     draw.hash = std::hash<std::string>{}(draw.src);
     draw.rect = bounds;
     draw.fps = node.fps;
+    draw.opacity = alpha;
     for (uint32_t i = 0; i < node.uniform_count; ++i) {
       const UniformRef &ref = uniforms[node.uniform_first + i];
       ShaderUniform uniform;

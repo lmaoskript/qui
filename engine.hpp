@@ -128,6 +128,7 @@ struct ShaderDraw {
   std::string src;
   IRect rect;
   float fps = 0;
+  float opacity = 1;
   std::vector<ShaderUniform> uniforms;
 };
 

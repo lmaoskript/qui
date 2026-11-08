@@ -758,6 +758,7 @@ class Patcher {
     for (const child of parent.children) {
       let el = this.nodes.get(child.key);
       if (el && el.__kind !== child.kind) {
+        if (el === cursor) cursor = cursor.nextElementSibling;
         el.remove();
         this.forget(el);
         el = undefined;
