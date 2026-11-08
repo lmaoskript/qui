@@ -42,6 +42,9 @@ func Open(title string, width, height int) *Ui {
 
 func (u *Ui) Close() { C.qui_close(u.app) }
 
+// Wake requests a frame. It is safe to call from any goroutine.
+func (u *Ui) Wake() { C.qui_wake(u.app) }
+
 func (u *Ui) submit() {
 	C.qui_frame_end(u.app, (*C.uint8_t)(unsafe.Pointer(unsafe.SliceData(u.buf))), C.size_t(len(u.buf)))
 }

@@ -343,6 +343,9 @@ struct qui_app {
       case SDL_EVENT_MOUSE_WHEEL:
         wheel(e.wheel.y);
         break;
+      case SDL_EVENT_USER:
+        dirty = true;
+        break;
       default:
         break;
     }
@@ -555,6 +558,13 @@ struct qui_app {
 extern "C" {
 
 void qui_set_app_id(const char *id) { g_app_id = id ? id : ""; }
+
+void qui_wake(qui_app *app) {
+  if (!app || app->headless) return;
+  SDL_Event event{};
+  event.type = SDL_EVENT_USER;
+  SDL_PushEvent(&event);
+}
 
 qui_app *qui_open(const char *title, int width, int height) {
   auto *app = new qui_app();

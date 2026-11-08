@@ -115,6 +115,7 @@ class Ui {
     return true;
   }
 
+  void wake() { qui_wake(app_); }
   void set_theme(uint8_t theme) { theme_ = theme; }
   float width() const { return header(8); }
   float height() const { return header(12); }

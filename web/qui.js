@@ -588,6 +588,7 @@ export async function start({ wasm, root = document.body, sans = "system-ui, san
       firstFrame();
     },
     takeResults: () => patcher.takeResults(),
+    invalidate: () => patcher.requestFrame(),
   };
 
   const go = new Go();
