@@ -296,7 +296,7 @@ FontInstanceId Engine::font_for(const Node &node) {
   if (const auto it = font_cache_.find(key); it != font_cache_.end()) return it->second;
   const std::string &path = node.mono ? (node.weight ? mono_bold_ : mono_regular_)
                                       : (node.weight ? sans_bold_ : sans_regular_);
-  const FontInstanceId id = fonts.load_font(path, static_cast<float>(rounded), true);
+  const FontInstanceId id = fonts.load_font(path, static_cast<float>(rounded), true, !node.mono);
   font_cache_[key] = id;
   return id;
 }
@@ -760,9 +760,18 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip) {
 
   const float ink = metrics->ascender - metrics->descender;
   const auto emit = [&](const ShapedGlyph &g, float origin) {
-    const CachedGlyph *glyph = fonts.get_glyph(g.font, g.glyph_id);
+    float position = origin + g.x_offset;
+    uint32_t quarter = 0;
+    if (fonts.subpixel(g.font)) {
+      const long quarters = std::lround(position * 4);
+      quarter = static_cast<uint32_t>(quarters & 3);
+      position = static_cast<float>(quarters - static_cast<long>(quarter)) / 4;
+    } else {
+      position = std::round(position);
+    }
+    const CachedGlyph *glyph = fonts.get_glyph(g.font, g.glyph_id, quarter);
     if (!glyph || !glyph->has_bitmap) return;
-    const float gx = std::round(origin + g.x_offset) + static_cast<float>(glyph->bitmap_left);
+    const float gx = position + static_cast<float>(glyph->bitmap_left);
     const float gy = std::round(y + (line_height - ink) / 2 + metrics->ascender - g.y_offset) - static_cast<float>(glyph->bitmap_top);
     const IRect bounds{static_cast<int>(gx), static_cast<int>(gy), static_cast<int>(glyph->bitmap_width), static_cast<int>(glyph->bitmap_height)};
     if (intersect(bounds, clip).empty()) return;

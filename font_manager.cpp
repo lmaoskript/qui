@@ -5,6 +5,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
+#include FT_OUTLINE_H
 #include <hb-ft.h>
 #include <fontconfig/fontconfig.h>
 
@@ -23,6 +24,10 @@ namespace {
 constexpr FT_Int32 kTextLoadFlags =
     FT_LOAD_DEFAULT | FT_LOAD_TARGET_NORMAL;
 
+// Proportional text keeps unhinted horizontal metrics and is placed on quarter
+// pixels, which is what evens out the letter spacing at 1x.
+constexpr FT_Int32 kSubpixelLoadFlags = FT_LOAD_DEFAULT | FT_LOAD_TARGET_LIGHT;
+
 }  // namespace
 
 struct FontManager::FontInstance {
@@ -34,6 +39,8 @@ struct FontManager::FontInstance {
   float raster_scale = 1.0f;
   int face_index = 0;
   bool ligatures_enabled = true;
+  bool subpixel = false;
+  FT_Int32 load_flags = kTextLoadFlags;
   FontMetrics metrics;
   std::unordered_map<uint32_t, CachedGlyph> glyphs;
 
@@ -63,19 +70,20 @@ FontManager::~FontManager() {
 }
 
 FontInstanceId FontManager::load_font(const std::string &path, float pixel_size,
-                                      bool ligatures_enabled) {
-  return load_font_face(path, 0, pixel_size, ligatures_enabled);
+                                      bool ligatures_enabled, bool subpixel) {
+  return load_font_face(path, 0, pixel_size, ligatures_enabled, subpixel);
 }
 
 FontInstanceId FontManager::load_font_face(const std::string &path,
                                            int face_index, float pixel_size,
-                                           bool ligatures_enabled) {
+                                           bool ligatures_enabled,
+                                           bool subpixel) {
   if (!library_ || pixel_size <= 0.0f)
     return 0;
 
   for (const auto &font : fonts_) {
     if (font && font->path == path && font->face_index == face_index &&
-        font->pixel_size == pixel_size)
+        font->pixel_size == pixel_size && font->subpixel == subpixel)
       return font->id;
   }
 
@@ -114,7 +122,9 @@ FontInstanceId FontManager::load_font_face(const std::string &path,
                  path.c_str());
     return 0;
   }
-  hb_ft_font_set_load_flags(instance->hb, kTextLoadFlags);
+  instance->subpixel = subpixel;
+  instance->load_flags = subpixel ? kSubpixelLoadFlags : kTextLoadFlags;
+  hb_ft_font_set_load_flags(instance->hb, instance->load_flags);
   // Leave HarfBuzz at the selected bitmap strike. Overriding its scale made
   // hb-ft rescale advances a second time, collapsing a 14px emoji's advance
   // to about 2px; the shaper applies position_scale instead.
@@ -166,6 +176,10 @@ const std::string *FontManager::font_path(FontInstanceId id) const {
   return valid_font(id) ? &fonts_[id - 1]->path : nullptr;
 }
 
+bool FontManager::subpixel(FontInstanceId id) const {
+  return valid_font(id) && fonts_[id - 1]->subpixel;
+}
+
 bool FontManager::has_codepoint(FontInstanceId font,
                                 uint32_t codepoint) const {
   return valid_font(font) &&
@@ -196,6 +210,7 @@ FontInstanceId FontManager::font_for_codepoint(FontInstanceId preferred,
 
   const float pixel_size = fonts_[preferred - 1]->pixel_size;
   const bool ligatures_enabled = fonts_[preferred - 1]->ligatures_enabled;
+  const bool subpixel_text = fonts_[preferred - 1]->subpixel;
   auto match_family = [&](const char *family) -> FontInstanceId {
     FontInstanceId match_font = 0;
     FcPattern *pattern = FcPatternCreate();
@@ -222,7 +237,7 @@ FontInstanceId FontManager::font_for_codepoint(FontInstanceId preferred,
         FcPatternGetInteger(match, FC_INDEX, 0, &face_index);
         const FontInstanceId candidate =
             load_font_face(reinterpret_cast<const char *>(file), face_index,
-                           pixel_size, ligatures_enabled);
+                           pixel_size, ligatures_enabled, subpixel_text);
         if (candidate && has_codepoint(candidate, codepoint))
           match_font = candidate;
       }
@@ -354,11 +369,13 @@ bool FontManager::upload_rgba(uint32_t width, uint32_t height,
 }
 
 const CachedGlyph *FontManager::get_glyph(FontInstanceId font,
-                                          uint32_t glyph_id) {
+                                          uint32_t glyph_id,
+                                          uint32_t quarter_pixel) {
   if (!valid_font(font))
     return nullptr;
   FontInstance &instance = *fonts_[font - 1];
-  const auto existing = instance.glyphs.find(glyph_id);
+  const uint32_t cache_key = glyph_id | (quarter_pixel << 24);
+  const auto existing = instance.glyphs.find(cache_key);
   if (existing != instance.glyphs.end()) {
     ++glyph_cache_hits_;
     return &existing->second;
@@ -369,7 +386,7 @@ const CachedGlyph *FontManager::get_glyph(FontInstanceId font,
   glyph.font = font;
   glyph.glyph_id = glyph_id;
   FT_Face face = instance.face;
-  const FT_Int32 load_flags = kTextLoadFlags | FT_LOAD_COLOR;
+  const FT_Int32 load_flags = instance.load_flags | FT_LOAD_COLOR;
   if (FT_Load_Glyph(face, glyph_id, load_flags) != 0) {
     std::fprintf(stderr, "font: FT_Load_Glyph failed for glyph %u\n",
                  static_cast<unsigned>(glyph_id));
@@ -377,6 +394,10 @@ const CachedGlyph *FontManager::get_glyph(FontInstanceId font,
   }
   glyph.advance_x =
       face->glyph->advance.x / 64.0f * instance.raster_scale;
+
+  if (quarter_pixel != 0 && face->glyph->format == FT_GLYPH_FORMAT_OUTLINE)
+    FT_Outline_Translate(&face->glyph->outline,
+                         static_cast<FT_Pos>(quarter_pixel) * 16, 0);
 
   if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
     std::fprintf(stderr, "font: FT_Render_Glyph failed for glyph %u\n",
@@ -494,7 +515,7 @@ const CachedGlyph *FontManager::get_glyph(FontInstanceId font,
     ++glyph_rasterizations_;
   }
 
-  auto [it, inserted] = instance.glyphs.emplace(glyph_id, glyph);
+  auto [it, inserted] = instance.glyphs.emplace(cache_key, glyph);
   if (!inserted)
     return &it->second;
   return &it->second;

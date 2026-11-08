@@ -74,7 +74,7 @@ class FontManager {
   FontManager &operator=(const FontManager &) = delete;
 
   FontInstanceId load_font(const std::string &path, float pixel_size,
-                           bool ligatures_enabled = true);
+                           bool ligatures_enabled = true, bool subpixel = false);
   bool valid_font(FontInstanceId id) const;
   hb_font_t *hb_font(FontInstanceId id) const;
   FT_Face ft_face(FontInstanceId id) const;
@@ -84,7 +84,9 @@ class FontManager {
   FontInstanceId font_for_codepoint(FontInstanceId preferred,
                                     uint32_t codepoint);
 
-  const CachedGlyph *get_glyph(FontInstanceId font, uint32_t glyph_id);
+  bool subpixel(FontInstanceId id) const;
+  const CachedGlyph *get_glyph(FontInstanceId font, uint32_t glyph_id,
+                               uint32_t quarter_pixel = 0);
   bool upload_rgba(uint32_t width, uint32_t height,
                    const std::vector<uint8_t> &pixels, AtlasRegion &region);
 
@@ -147,7 +149,8 @@ class FontManager {
   bool allocate_atlas_rect(uint32_t width, uint32_t height,
                            uint32_t &page, uint32_t &x, uint32_t &y);
   FontInstanceId load_font_face(const std::string &path, int face_index,
-                                float pixel_size, bool ligatures_enabled);
+                                float pixel_size, bool ligatures_enabled,
+                                bool subpixel);
 };
 
 }  // namespace qui
