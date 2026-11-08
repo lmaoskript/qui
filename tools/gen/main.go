@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"go/format"
 	"log"
 	"math"
 	"os"
@@ -207,9 +208,13 @@ func main() {
 		root = os.Args[1]
 	}
 	s := parse(filepath.Join(root, "spec.txt"))
+	formatted, err := format.Source([]byte(goSource(s)))
+	if err != nil {
+		log.Fatal(err)
+	}
 	files := map[string]string{
 		"wire.gen.hpp":    cpp(s),
-		"wire_gen.go":     goSource(s),
+		"wire_gen.go":     string(formatted),
 		"web/wire.gen.js": js(s),
 	}
 	for name, content := range files {

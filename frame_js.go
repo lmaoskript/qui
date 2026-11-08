@@ -1,0 +1,57 @@
+//go:build js
+
+package qui
+
+import "syscall/js"
+
+type platform struct {
+	bridge  js.Value
+	out     js.Value
+	outCap  int
+	results []byte
+	wake    chan struct{}
+	onWake  js.Func
+}
+
+// Open connects to the DOM patcher started by web/qui.js.
+func Open(title string, width, height int) *Ui {
+	bridge := js.Global().Get("__qui")
+	if bridge.IsUndefined() {
+		panic("qui: start the wasm module through start() from web/qui.js")
+	}
+	u := newUi()
+	u.bridge = bridge
+	u.wake = make(chan struct{}, 1)
+	u.onWake = js.FuncOf(func(js.Value, []js.Value) any {
+		select {
+		case u.wake <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+	bridge.Call("connect", title, u.onWake)
+	return u
+}
+
+func (u *Ui) Close() { u.onWake.Release() }
+
+func (u *Ui) submit() {
+	if len(u.buf) > u.outCap {
+		u.outCap = len(u.buf) * 2
+		u.out = js.Global().Get("Uint8Array").New(u.outCap)
+	}
+	js.CopyBytesToJS(u.out, u.buf)
+	u.bridge.Call("apply", u.out, len(u.buf))
+}
+
+func (u *Ui) wait() []byte {
+	<-u.wake
+	table := u.bridge.Call("takeResults")
+	n := table.Length()
+	if cap(u.results) < n {
+		u.results = make([]byte, n*2)
+	}
+	u.results = u.results[:n]
+	js.CopyBytesToGo(u.results, table)
+	return u.results
+}

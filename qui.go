@@ -1,0 +1,453 @@
+package qui
+
+import (
+	"encoding/binary"
+	"math"
+)
+
+const hashSeed uint64 = 14695981039346656037
+
+type Size struct {
+	mode  uint8
+	value float32
+}
+
+func Px(v float32) Size         { return Size{sizePx, v} }
+func Fill() Size                { return Size{sizeFill, 1} }
+func FillN(weight float32) Size { return Size{sizeFill, weight} }
+func Pct(percent float32) Size  { return Size{sizePct, percent} }
+
+type Edges struct {
+	Top, Right, Bottom, Left float32
+}
+
+func All(v float32) Edges   { return Edges{v, v, v, v} }
+func XY(x, y float32) Edges { return Edges{y, x, y, x} }
+
+func RGBA(r, g, b, a uint8) Color {
+	return Color(uint32(r)<<24 | uint32(g)<<16 | uint32(b)<<8 | uint32(a))
+}
+
+func RGB(r, g, b uint8) Color { return RGBA(r, g, b, 255) }
+
+type Style struct {
+	W, H                   Size
+	MinW, MaxW, MinH, MaxH float32
+	Pad                    Edges
+	Gap                    float32
+	Align, Justify         Align
+	Absolute               bool
+	X, Y                   float32
+	Bg, Fg, Border         Color
+	BorderW, Radius        float32
+	Opacity                float32
+	Clip, Scroll, Hit      bool
+	Role                   Role
+	Label, Key             string
+}
+
+type TextStyle struct {
+	Size                 float32
+	Bold, Mono, Ellipsis bool
+	Color                Color
+	W                    Size
+	Align                Align
+	Role                 Role
+}
+
+var (
+	Body  = TextStyle{}
+	H1    = TextStyle{Size: 24, Bold: true, Color: Strong, Role: RoleHeading}
+	H2    = TextStyle{Size: 18, Bold: true, Color: Strong, Role: RoleHeading}
+	Small = TextStyle{Size: 12, Color: Muted}
+	Code  = TextStyle{Size: 13, Mono: true}
+)
+
+type Response struct {
+	Found, Hovered, Pressed, Clicked, RightClicked bool
+	Focused, DragStart, Dragging, DragEnd          bool
+	X, Y, W, H, DX, DY                             float32
+	First, Count                                   uint32
+}
+
+type ListOptions struct {
+	Style  Style
+	Bottom bool
+}
+
+type Uniform struct {
+	Name   string
+	Values []float32
+}
+
+type ShaderOptions struct {
+	Src      string
+	Style    Style
+	Fps      float32
+	Uniforms []Uniform
+}
+
+type scope struct {
+	id    uint64
+	index uint32
+}
+
+type Ui struct {
+	platform
+	buf     []byte
+	stack   []scope
+	res     []byte
+	theme   Theme
+	started bool
+}
+
+func newUi() *Ui {
+	return &Ui{buf: make([]byte, 0, 1<<16), stack: make([]scope, 0, 64)}
+}
+
+// Frame submits the frame just built and blocks until the next one is needed.
+// It returns false when the app should exit.
+func (u *Ui) Frame() bool {
+	if u.started {
+		u.submit()
+	}
+	res := u.wait()
+	if res == nil {
+		return false
+	}
+	u.res = res
+	u.started = true
+	u.buf = u.buf[:0]
+	u.stack = append(u.stack[:0], scope{hashSeed, 0})
+	u.u8(opFrame)
+	u.u8(wireVersion)
+	u.u8(uint8(u.theme))
+	return true
+}
+
+func (u *Ui) SetTheme(t Theme)  { u.theme = t }
+func (u *Ui) Width() float32    { return u.header(8) }
+func (u *Ui) Height() float32   { return u.header(12) }
+func (u *Ui) Dpr() float32      { return u.header(16) }
+func (u *Ui) Dt() float32       { return u.header(20) }
+func (u *Ui) PointerX() float32 { return u.header(24) }
+func (u *Ui) PointerY() float32 { return u.header(28) }
+
+func (u *Ui) Column(s Style, body func()) Response { return u.container(dirColumn, &s, body) }
+func (u *Ui) Row(s Style, body func()) Response    { return u.container(dirRow, &s, body) }
+func (u *Ui) Stack(s Style, body func()) Response  { return u.container(dirStack, &s, body) }
+
+func (u *Ui) Text(value string, style ...TextStyle) {
+	var t TextStyle
+	if len(style) > 0 {
+		t = style[0]
+	}
+	u.open(kindText, "")
+	u.str(opText, value)
+	if t.Size != 0 {
+		u.f32Op(opFontSize, t.Size)
+	}
+	if t.Bold {
+		u.u8Op(opWeight, 1)
+	}
+	if t.Mono {
+		u.u8(opMono)
+	}
+	if t.Ellipsis {
+		u.u8(opEllipsis)
+	}
+	if t.Color != 0 {
+		u.u32Op(opFg, uint32(t.Color))
+	}
+	u.sizeOp(opWidth, t.W)
+	if t.Align != 0 {
+		u.u8Op(opJustify, uint8(t.Align))
+	}
+	if t.Role != 0 {
+		u.u8Op(opRole, uint8(t.Role))
+	}
+	u.u8(opEnd)
+}
+
+func (u *Ui) Button(label string, style ...Style) Response {
+	var s Style
+	if len(style) > 0 {
+		s = style[0]
+	}
+	key := s.Key
+	if key == "" {
+		key = label
+	}
+	id := u.open(kindButton, key)
+	u.emitStyle(&s)
+	u.str(opText, label)
+	u.u8(opEnd)
+	return u.lookup(id)
+}
+
+func (u *Ui) List(key string, count int, estimate float32, o ListOptions, row func(i int)) Response {
+	id := u.open(kindList, key)
+	u.emitStyle(&o.Style)
+	u.u8(opVirtual)
+	u.u32(uint32(count))
+	u.f32(estimate)
+	if o.Bottom {
+		u.u8(1)
+	} else {
+		u.u8(0)
+	}
+	result := u.lookup(id)
+	first, visible := int(result.First), int(result.Count)
+	if !result.Found || visible == 0 {
+		visible = min(count, 32)
+		first = 0
+		if o.Bottom && count > visible {
+			first = count - visible
+		}
+	}
+	u.stack = append(u.stack, scope{id, 0})
+	for i := first; i < min(first+visible, count); i++ {
+		item := mixU32(id, uint32(i))
+		u.u8(opOpen)
+		u.u8(kindBox)
+		u.u64(item)
+		u.sizeOp(opWidth, Fill())
+		u.u8(opItem)
+		u.u32(uint32(i))
+		u.stack = append(u.stack, scope{item, 0})
+		row(i)
+		u.stack = u.stack[:len(u.stack)-1]
+		u.u8(opEnd)
+	}
+	u.stack = u.stack[:len(u.stack)-1]
+	u.u8(opEnd)
+	return result
+}
+
+func (u *Ui) Shader(o ShaderOptions) {
+	u.open(kindShader, o.Style.Key)
+	u.emitStyle(&o.Style)
+	u.str(opSrc, o.Src)
+	if o.Fps != 0 {
+		u.f32Op(opFps, o.Fps)
+	}
+	for i := range o.Uniforms {
+		uniform := &o.Uniforms[i]
+		u.u8(opUniform)
+		u.u8(uint8(len(uniform.Name)))
+		u.buf = append(u.buf, uniform.Name...)
+		u.u8(uint8(len(uniform.Values)))
+		for _, v := range uniform.Values {
+			u.f32(v)
+		}
+	}
+	u.u8(opEnd)
+}
+
+func mixString(h uint64, s string) uint64 {
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= 1099511628211
+	}
+	if h == 0 {
+		return 1
+	}
+	return h
+}
+
+func mixU32(h uint64, v uint32) uint64 {
+	for shift := 0; shift < 32; shift += 8 {
+		h ^= uint64(byte(v >> shift))
+		h *= 1099511628211
+	}
+	if h == 0 {
+		return 1
+	}
+	return h
+}
+
+func (u *Ui) header(offset int) float32 {
+	if len(u.res) < offset+4 {
+		return 0
+	}
+	return math.Float32frombits(binary.LittleEndian.Uint32(u.res[offset:]))
+}
+
+func (u *Ui) u8(v uint8)   { u.buf = append(u.buf, v) }
+func (u *Ui) u32(v uint32) { u.buf = binary.LittleEndian.AppendUint32(u.buf, v) }
+func (u *Ui) u64(v uint64) { u.buf = binary.LittleEndian.AppendUint64(u.buf, v) }
+func (u *Ui) f32(v float32) {
+	u.buf = binary.LittleEndian.AppendUint32(u.buf, math.Float32bits(v))
+}
+func (u *Ui) u8Op(op, v uint8) {
+	u.u8(op)
+	u.u8(v)
+}
+func (u *Ui) u32Op(op uint8, v uint32) {
+	u.u8(op)
+	u.u32(v)
+}
+func (u *Ui) f32Op(op uint8, v float32) {
+	u.u8(op)
+	u.f32(v)
+}
+func (u *Ui) str(op uint8, v string) {
+	u.u8(op)
+	u.u32(uint32(len(v)))
+	u.buf = append(u.buf, v...)
+}
+func (u *Ui) sizeOp(op uint8, s Size) {
+	if s.mode == sizeFit {
+		return
+	}
+	u.u8(op)
+	u.u8(s.mode)
+	u.f32(s.value)
+}
+
+func (u *Ui) open(kind uint8, key string) uint64 {
+	top := &u.stack[len(u.stack)-1]
+	var id uint64
+	if key == "" {
+		id = mixU32(top.id, top.index)
+	} else {
+		id = mixString(top.id, key)
+	}
+	top.index++
+	u.u8(opOpen)
+	u.u8(kind)
+	u.u64(id)
+	return id
+}
+
+func (u *Ui) emitStyle(s *Style) {
+	u.sizeOp(opWidth, s.W)
+	u.sizeOp(opHeight, s.H)
+	if s.MinW != 0 {
+		u.f32Op(opMinW, s.MinW)
+	}
+	if s.MaxW != 0 {
+		u.f32Op(opMaxW, s.MaxW)
+	}
+	if s.MinH != 0 {
+		u.f32Op(opMinH, s.MinH)
+	}
+	if s.MaxH != 0 {
+		u.f32Op(opMaxH, s.MaxH)
+	}
+	if s.Pad != (Edges{}) {
+		u.u8(opPad)
+		u.f32(s.Pad.Top)
+		u.f32(s.Pad.Right)
+		u.f32(s.Pad.Bottom)
+		u.f32(s.Pad.Left)
+	}
+	if s.Gap != 0 {
+		u.f32Op(opGap, s.Gap)
+	}
+	if s.Align != 0 {
+		u.u8Op(opAlign, uint8(s.Align))
+	}
+	if s.Justify != 0 {
+		u.u8Op(opJustify, uint8(s.Justify))
+	}
+	if s.Absolute {
+		u.u8(opPos)
+		u.f32(s.X)
+		u.f32(s.Y)
+	}
+	if s.Bg != 0 {
+		u.u32Op(opBg, uint32(s.Bg))
+	}
+	if s.Fg != 0 {
+		u.u32Op(opFg, uint32(s.Fg))
+	}
+	if s.Border != 0 {
+		width := s.BorderW
+		if width == 0 {
+			width = 1
+		}
+		u.u8(opBorder)
+		u.u32(uint32(s.Border))
+		u.f32(width)
+	}
+	if s.Radius != 0 {
+		u.f32Op(opRadius, s.Radius)
+	}
+	if s.Opacity != 0 {
+		u.f32Op(opOpacity, s.Opacity)
+	}
+	if s.Clip {
+		u.u8(opClip)
+	}
+	if s.Scroll {
+		u.u8(opScroll)
+	}
+	if s.Hit {
+		u.u8Op(opHit, 1)
+	}
+	if s.Role != 0 {
+		u.u8Op(opRole, uint8(s.Role))
+	}
+	if s.Label != "" {
+		u.str(opLabel, s.Label)
+	}
+}
+
+func (u *Ui) container(dir uint8, s *Style, body func()) Response {
+	id := u.open(kindBox, s.Key)
+	if dir != dirColumn {
+		u.u8Op(opDir, dir)
+	}
+	u.emitStyle(s)
+	u.stack = append(u.stack, scope{id, 0})
+	body()
+	u.stack = u.stack[:len(u.stack)-1]
+	u.u8(opEnd)
+	return u.lookup(id)
+}
+
+const (
+	resultsHeader = 32
+	resultsSlot   = 48
+)
+
+func (u *Ui) lookup(id uint64) Response {
+	var out Response
+	if len(u.res) < resultsHeader {
+		return out
+	}
+	capacity := binary.LittleEndian.Uint32(u.res[4:])
+	if capacity == 0 {
+		return out
+	}
+	mask := capacity - 1
+	for i := uint32(id) & mask; ; i = (i + 1) & mask {
+		slot := u.res[resultsHeader+int(i)*resultsSlot:]
+		key := binary.LittleEndian.Uint64(slot)
+		if key == 0 {
+			return out
+		}
+		if key != id {
+			continue
+		}
+		flags := binary.LittleEndian.Uint32(slot[8:])
+		float := func(offset int) float32 {
+			return math.Float32frombits(binary.LittleEndian.Uint32(slot[offset:]))
+		}
+		out.Found = true
+		out.First = binary.LittleEndian.Uint32(slot[12:])
+		out.Count = binary.LittleEndian.Uint32(slot[16:])
+		out.X, out.Y, out.W, out.H = float(24), float(28), float(32), float(36)
+		out.DX, out.DY = float(40), float(44)
+		out.Hovered = flags&flagHovered != 0
+		out.Pressed = flags&flagPressed != 0
+		out.Clicked = flags&flagClicked != 0
+		out.RightClicked = flags&flagRightClicked != 0
+		out.Focused = flags&flagFocused != 0
+		out.DragStart = flags&flagDragStart != 0
+		out.Dragging = flags&flagDragging != 0
+		out.DragEnd = flags&flagDragEnd != 0
+		return out
+	}
+}
