@@ -3,6 +3,8 @@ import { Align, Dir, Flag, Key, Kind, Mod, Op, Role, Size, Themes, Tokens, Versi
 const HEADER = 64;
 const SLOT = 48;
 const OVERSCAN_ROWS = 6;
+const MAX_LIST_PX = 15000000; // Firefox discards element heights above about 17.9M px.
+const isHugeList = (node) => node.count * (node.est || 32) > MAX_LIST_PX;
 const DRAG_THRESHOLD = 4;
 const MAGIC = 0x31495551;
 const decoder = new TextDecoder();
@@ -42,6 +44,7 @@ const baseCss = `
 .qui-input:focus { border-color: var(--qui-Accent); }
 .qui-input::placeholder { color: var(--qui-Muted); opacity: 1; }
 .qui-list { overflow-y: auto; display: block; }
+.qui-huge { overflow-anchor: none; }
 .qui-root, .qui-root * { scrollbar-width: thin; scrollbar-color: var(--qui-Scrollbar) transparent; }
 .qui-root canvas { display: block; }
 .qui-root [data-qh], .qui-list, .qui-text { pointer-events: auto; }
@@ -204,6 +207,7 @@ function css(node, parent) {
     if (wMode === Size.Fill) s += "align-self:stretch;";
   } else if (parent.kind === Kind.List) {
     s += "width:100%;";
+    if (parent.gap) s += `margin-bottom:${parent.gap}px;`;
   } else {
     s += "grid-area:1/1;";
     s += `justify-self:${wMode === Size.Fill ? "stretch" : selfAlign[parent.align ?? 0]};`;
@@ -590,18 +594,49 @@ class Patcher {
     for (const child of el.children) if (child.__key !== undefined) this.forget(child);
   }
 
+  listPosition(el, node, scrollTop = el.scrollTop) {
+    const est = node.est || 32;
+    if (!isHugeList(node)) return scrollTop / est;
+    const viewport = el.clientHeight;
+    return (scrollTop / Math.max(1, MAX_LIST_PX - viewport)) * ((node.count * est - viewport) / est);
+  }
+
   listRange(el, node) {
     const est = node.est || 32;
-    const viewport = el.clientHeight;
     const overscan = OVERSCAN_ROWS;
-    const first = Math.max(0, Math.floor(el.scrollTop / est) - overscan);
-    const visible = Math.min(node.count - first, Math.ceil(viewport / est) + overscan * 2);
+    const position = Math.floor(this.listPosition(el, node));
+    const first = Math.max(0, Math.min(node.count - 1, position - overscan));
+    const visible = Math.min(node.count - first, Math.ceil(el.clientHeight / est) + overscan * 2);
     return [first, Math.max(0, visible)];
+  }
+
+  placeSpacers(el, node, scrollTop = el.scrollTop) {
+    const est = node.est || 32;
+    const huge = isHugeList(node);
+    let top = el.__first * est;
+    let bottom = Math.max(0, node.count - el.__last) * est;
+    if (huge) {
+      const start = el.__top.offsetTop + el.__top.offsetHeight;
+      const rendered = el.__bottom.offsetTop - start;
+      const position = this.listPosition(el, node, scrollTop);
+      const index = Math.max(el.__first, Math.min(el.__last - 1, Math.floor(position)));
+      const anchor = el.__last > el.__first ? el.children[1 + index - el.__first] : null;
+      const fraction = Math.max(0, Math.min(1, position - index));
+      const anchored = scrollTop - fraction * (anchor?.offsetHeight ?? est) - (anchor ? anchor.offsetTop - start : 0);
+      const atEnd = el.__last === node.count && scrollTop >= MAX_LIST_PX - el.clientHeight - 1;
+      top = atEnd ? MAX_LIST_PX - rendered : anchored;
+      bottom = Math.max(0, MAX_LIST_PX - top - rendered);
+    }
+    el.classList.toggle("qui-huge", huge);
+    el.__top.style.height = `${Math.max(0, top)}px`;
+    el.__top.style.marginTop = `${Math.min(0, top)}px`;
+    el.__bottom.style.height = `${bottom}px`;
   }
 
   onListScroll(el) {
     const entry = this.entries.get(el.__key);
     if (!entry || !el.__node) return;
+    if (isHugeList(el.__node)) this.placeSpacers(el, el.__node);
     const [first, count] = this.listRange(el, el.__node);
     if (first !== entry.first || count !== entry.count) {
       entry.first = first;
@@ -673,15 +708,18 @@ class Patcher {
 
   patchList(el, node) {
     el.__node = node;
-    const est = node.est || 32;
     const items = node.children;
-    const first = items.length ? items[0].item : 0;
-    const last = items.length ? items[items.length - 1].item + 1 : 0;
+    el.__first = items.length ? items[0].item : 0;
+    el.__last = items.length ? items[items.length - 1].item + 1 : 0;
     const wasNearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-    el.__top.style.height = `${first * est}px`;
-    el.__bottom.style.height = `${Math.max(0, node.count - last) * est}px`;
+    const scrollTop = el.scrollTop;
     this.reconcile(el, node, el.__top.nextSibling, el.__bottom);
-    if (node.bottom && (wasNearBottom || !el.__settled)) el.scrollTop = el.scrollHeight;
+    this.placeSpacers(el, node, scrollTop);
+    if (isHugeList(node) && el.scrollTop !== scrollTop) el.scrollTop = scrollTop;
+    if (node.bottom && (wasNearBottom || !el.__settled)) {
+      el.scrollTop = el.scrollHeight;
+      this.placeSpacers(el, node);
+    }
     el.__settled = true;
     const entry = this.entries.get(node.key);
     const [wantFirst, wantCount] = this.listRange(el, node);
