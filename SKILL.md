@@ -159,7 +159,7 @@ func main() {
 }
 ```
 
-Arguments are key, row count, estimated row height, options, row body. The body runs only for visible rows and heights may vary. The list needs a bounded height. `Bottom: true` starts at the end and stays pinned there, for chat logs.
+Arguments are key, row count, estimated row height, options, row body. The body runs only for visible rows and heights may vary. The list needs a bounded height. `Bottom: true` starts at the end and stays pinned there, and a short list sits at the bottom, for chat logs.
 
 ## Shaders
 

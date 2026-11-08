@@ -4,7 +4,8 @@ const HEADER = 64;
 const SLOT = 48;
 const OVERSCAN_ROWS = 6;
 const MAX_LIST_PX = 15000000; // Firefox discards element heights above about 17.9M px.
-const isHugeList = (node) => node.count * (node.est || 32) > MAX_LIST_PX;
+const listPitch = (node) => (node.est || 32) + (node.gap || 0);
+const isHugeList = (node) => node.count * listPitch(node) > MAX_LIST_PX;
 const DRAG_THRESHOLD = 4;
 const MAGIC = 0x31495551;
 const decoder = new TextDecoder();
@@ -45,6 +46,8 @@ const baseCss = `
 .qui-input::placeholder { color: var(--qui-Muted); opacity: 1; }
 .qui-list { overflow-y: auto; display: block; }
 .qui-huge { overflow-anchor: none; }
+.qui-end { display: flex; flex-direction: column; }
+.qui-end > * { flex-shrink: 0; }
 .qui-root, .qui-root * { scrollbar-width: thin; scrollbar-color: var(--qui-Scrollbar) transparent; }
 .qui-root canvas { display: block; }
 .qui-root [data-qh], .qui-list, .qui-text { pointer-events: auto; }
@@ -595,10 +598,10 @@ class Patcher {
   }
 
   listPosition(el, node, scrollTop = el.scrollTop) {
-    const est = node.est || 32;
-    if (!isHugeList(node)) return scrollTop / est;
+    const pitch = listPitch(node);
+    if (!isHugeList(node)) return scrollTop / pitch;
     const viewport = el.clientHeight;
-    return (scrollTop / Math.max(1, MAX_LIST_PX - viewport)) * ((node.count * est - viewport) / est);
+    return (scrollTop / Math.max(1, MAX_LIST_PX - viewport)) * ((node.count * pitch - viewport) / pitch);
   }
 
   listRange(el, node) {
@@ -612,9 +615,10 @@ class Patcher {
 
   placeSpacers(el, node, scrollTop = el.scrollTop) {
     const est = node.est || 32;
+    const pitch = listPitch(node);
     const huge = isHugeList(node);
-    let top = el.__first * est;
-    let bottom = Math.max(0, node.count - el.__last) * est;
+    let top = el.__first * pitch;
+    let bottom = Math.max(0, node.count - el.__last) * pitch;
     if (huge) {
       const start = el.__top.offsetTop + el.__top.offsetHeight;
       const rendered = el.__bottom.offsetTop - start;
@@ -628,9 +632,11 @@ class Patcher {
       bottom = Math.max(0, MAX_LIST_PX - top - rendered);
     }
     el.classList.toggle("qui-huge", huge);
+    el.classList.toggle("qui-end", !!node.bottom);
     el.__top.style.height = `${Math.max(0, top)}px`;
-    el.__top.style.marginTop = `${Math.min(0, top)}px`;
+    el.__top.style.marginTop = top < 0 ? `${top}px` : node.bottom ? "auto" : "0px";
     el.__bottom.style.height = `${bottom}px`;
+    el.__bottom.style.marginTop = `${-(node.gap || 0)}px`;
   }
 
   onListScroll(el) {
