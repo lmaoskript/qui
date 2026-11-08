@@ -625,8 +625,6 @@ void Engine::place_children(Node &node) {
     ScrollState &state = scrolls[node.id];
     state.frame = frame_number;
     state.viewport = inner_h;
-    float content = 0;
-    each_child(nodes, node, [&](const Node &c) { content = std::max(content, c.y + c.h); });
     int flow = 0;
     float sum = 0;
     each_child(nodes, node, [&](const Node &c) {
