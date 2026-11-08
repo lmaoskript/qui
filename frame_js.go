@@ -13,6 +13,9 @@ type platform struct {
 	onWake  js.Func
 }
 
+// SetAppID has no effect in the browser.
+func SetAppID(string) {}
+
 // Open connects to the DOM patcher started by web/qui.js.
 func Open(title string, width, height int) *Ui {
 	bridge := js.Global().Get("__qui")

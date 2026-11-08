@@ -88,6 +88,8 @@ struct ShaderOptions {
   std::initializer_list<Uniform> uniforms{};
 };
 
+inline void set_app_id(const char *id) { qui_set_app_id(id); }
+
 class Ui {
  public:
   Ui(const char *title, int width, int height) : app_(qui_open(title, width, height)) {

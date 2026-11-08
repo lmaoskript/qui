@@ -23,6 +23,14 @@ type platform struct {
 	n   C.size_t
 }
 
+// SetAppID sets the Wayland app id. Call it before Open. It must match the
+// basename of the app's .desktop file.
+func SetAppID(id string) {
+	cid := C.CString(id)
+	defer C.free(unsafe.Pointer(cid))
+	C.qui_set_app_id(cid)
+}
+
 // Open creates the app window. Call it from the main goroutine.
 func Open(title string, width, height int) *Ui {
 	ctitle := C.CString(title)

@@ -21,6 +21,8 @@ using namespace qui;
 constexpr float kDragThreshold = 4;
 constexpr float kWheelPixels = 48;
 
+std::string g_app_id;
+
 std::string env(const char *name) {
   const char *value = std::getenv(name);
   return value ? value : "";
@@ -117,6 +119,8 @@ struct qui_app {
   std::string shot_path, tree_path, wire_path;
   std::vector<uint8_t> last_wire, results;
   std::vector<uint32_t> capture;
+  std::vector<std::string> drive;
+  size_t drive_at = 0;
 
   float pointer_x = -1, pointer_y = -1;
   float press_x = 0, press_y = 0;
@@ -188,6 +192,12 @@ struct qui_app {
     std::string requested = env("QUI_BACKEND");
     if (const std::string size = env("QUI_SIZE"); !size.empty()) std::sscanf(size.c_str(), "%dx%d", &width, &height);
     if (const std::string scale = env("QUI_DPR"); !scale.empty()) dpr = std::stof(scale);
+    std::string steps = env("QUI_DRIVE");
+    for (size_t at = 0; at < steps.size();) {
+      const size_t end = std::min(steps.find(';', at), steps.size());
+      if (end > at) drive.push_back(steps.substr(at, end - at));
+      at = end + 1;
+    }
 
     if (headless && requested != "gl") {
       pixel_w = static_cast<int>(std::lround(static_cast<float>(width) * dpr));
@@ -198,6 +208,7 @@ struct qui_app {
       return;
     }
 
+    if (!g_app_id.empty()) SDL_SetAppMetadata(title, nullptr, g_app_id.c_str());
     if (!SDL_Init(SDL_INIT_VIDEO)) {
       std::fprintf(stderr, "qui: could not start SDL: %s\n", SDL_GetError());
       quit = true;
@@ -334,6 +345,48 @@ struct qui_app {
         break;
       default:
         break;
+    }
+  }
+
+  int total_frames() const { return std::max(headless_frames(), 6 + static_cast<int>(drive.size()) * 2); }
+
+  void drive_step() {
+    if (drive_at >= drive.size() || frames < 2 || frames % 2 != 0) return;
+    const std::string &step = drive[drive_at++];
+    float x = 0, y = 0, amount = 0;
+    const auto motion = [&] {
+      SDL_Event e{};
+      e.type = SDL_EVENT_MOUSE_MOTION;
+      e.motion.x = x * dpr;
+      e.motion.y = y * dpr;
+      handle(e);
+    };
+    const auto button = [&](Uint32 type, Uint8 which) {
+      SDL_Event e{};
+      e.type = type;
+      e.button.button = which;
+      e.button.x = x * dpr;
+      e.button.y = y * dpr;
+      handle(e);
+    };
+    if (std::sscanf(step.c_str(), "click:%f,%f", &x, &y) == 2) {
+      motion();
+      button(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_LEFT);
+      button(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_LEFT);
+    } else if (std::sscanf(step.c_str(), "rclick:%f,%f", &x, &y) == 2) {
+      motion();
+      button(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_RIGHT);
+      button(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_RIGHT);
+    } else if (std::sscanf(step.c_str(), "move:%f,%f", &x, &y) == 2) {
+      motion();
+    } else if (std::sscanf(step.c_str(), "wheel:%f,%f,%f", &x, &y, &amount) == 3) {
+      motion();
+      SDL_Event e{};
+      e.type = SDL_EVENT_MOUSE_WHEEL;
+      e.wheel.y = amount;
+      handle(e);
+    } else {
+      std::fprintf(stderr, "qui: ignoring QUI_DRIVE step '%s'\n", step.c_str());
     }
   }
 
@@ -501,6 +554,8 @@ struct qui_app {
 
 extern "C" {
 
+void qui_set_app_id(const char *id) { g_app_id = id ? id : ""; }
+
 qui_app *qui_open(const char *title, int width, int height) {
   auto *app = new qui_app();
   app->open(title, width, height);
@@ -514,10 +569,11 @@ void qui_close(qui_app *app) {
 
 const uint8_t *qui_frame_begin(qui_app *app, size_t *len) {
   if (app->headless) {
-    if (app->frames >= headless_frames()) {
+    if (app->frames >= app->total_frames()) {
       app->finish();
       return nullptr;
     }
+    app->drive_step();
   } else if (!app->wait()) {
     return nullptr;
   }

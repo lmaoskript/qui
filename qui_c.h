@@ -9,6 +9,10 @@ extern "C" {
 
 typedef struct qui_app qui_app;
 
+/* Sets the identity used for the Wayland app id. Call before qui_open. It must
+ * match the basename of the app's .desktop file. */
+void qui_set_app_id(const char *id);
+
 qui_app *qui_open(const char *title, int width, int height);
 void qui_close(qui_app *app);
 
