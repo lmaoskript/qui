@@ -112,6 +112,33 @@ float ListState::height(uint32_t index) const {
   return it != heights.end() ? it->second : est;
 }
 
+void visual_offsets(const TextLine &line, std::vector<float> &out) {
+  const auto &glyphs = line.shaped->glyphs;
+  const uint32_t count = line.last - line.first;
+  out.resize(count);
+  if (count == 0) return;
+  const float origin = glyphs[line.first].x;
+  for (uint32_t i = 0; i < count; ++i) out[i] = glyphs[line.first + i].x - origin;
+  if (!line.shaped->has_rtl) return;
+  const auto advance = [&](uint32_t i) { return glyphs[line.first + i].x_advance; };
+  for (const uint8_t level : {uint8_t{2}, uint8_t{1}}) {
+    for (uint32_t from = 0; from < count;) {
+      if (glyphs[line.first + from].level < level) {
+        ++from;
+        continue;
+      }
+      uint32_t to = from;
+      float low = std::numeric_limits<float>::max(), high = std::numeric_limits<float>::lowest();
+      for (; to < count && glyphs[line.first + to].level >= level; ++to) {
+        low = std::min(low, out[to]);
+        high = std::max(high, out[to] + advance(to));
+      }
+      for (uint32_t i = from; i < to; ++i) out[i] = low + high - out[i] - advance(i);
+      from = to;
+    }
+  }
+}
+
 float ListState::average() const {
   if (heights.empty()) return est + gap;
   float known = 0;
@@ -843,9 +870,11 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
     const float x = (node.x + node.pad[3]) * dpr + dx + (node.justify == Center ? free_w / 2 : node.justify == End ? free_w : 0);
     const float origin = line.first < line.shaped->glyphs.size() ? line.shaped->glyphs[line.first].x : 0;
     float end = x;
+    const bool bidi = line.shaped->has_rtl;
+    if (bidi) visual_offsets(line, visual_);
     for (uint32_t g = line.first; g < line.last; ++g) {
       const ShapedGlyph &shaped = line.shaped->glyphs[g];
-      emit(shaped, x + shaped.x - origin);
+      emit(shaped, x + (bidi ? visual_[g - line.first] : shaped.x - origin));
       end = x + shaped.x - origin + shaped.x_advance;
     }
     if (line.ellipsis) {

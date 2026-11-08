@@ -31,6 +31,7 @@ struct ShapedGlyph {
   float x_offset = 0.0f;
   float y_offset = 0.0f;
   uint32_t packed_rgba = 0xffffffffu;
+  uint8_t level = 0;
 };
 
 struct ShapedLine {
@@ -39,6 +40,7 @@ struct ShapedLine {
   float ascent = 0.0f;
   float descent = 0.0f;
   float line_height = 0.0f;
+  bool has_rtl = false;
 };
 
 struct ShapingOptions {
@@ -89,6 +91,7 @@ class TextShaper {
   // Scratch storage reused across calls so a cache hit (the common case for
   // static UI text redrawn every frame) allocates no heap memory.
   std::vector<Run> scratch_runs_;
+  std::vector<uint8_t> scratch_levels_;
   std::string scratch_key_;
   size_t cache_bytes_ = 0;
   uint64_t shape_calls_ = 0;

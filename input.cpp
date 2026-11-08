@@ -62,9 +62,48 @@ uint32_t line_for(const std::vector<TextLine> &lines, const Node &node, size_t b
   return best;
 }
 
+float bidi_line_x(const TextLine &line, size_t relative) {
+  const auto &glyphs = line.shaped->glyphs;
+  std::vector<float> visual;
+  visual_offsets(line, visual);
+  const auto edge = [&](uint32_t i, float done) {
+    const ShapedGlyph &g = glyphs[line.first + i];
+    return visual[i] + g.x_advance * ((g.level & 1) ? 1 - done : done);
+  };
+  for (uint32_t i = 0; i < visual.size(); ++i) {
+    const ShapedGlyph &g = glyphs[line.first + i];
+    if (relative <= g.cluster_start_byte) {
+      const bool direction_changes = i > 0 && (glyphs[line.first + i - 1].level & 1) != (g.level & 1);
+      return direction_changes ? edge(i - 1, 1) : edge(i, 0);
+    }
+    if (relative < g.cluster_end_byte) return edge(i, static_cast<float>(relative - g.cluster_start_byte) / static_cast<float>(g.cluster_end_byte - g.cluster_start_byte));
+  }
+  return edge(static_cast<uint32_t>(visual.size()) - 1, 1);
+}
+
+size_t bidi_byte_at_x(const TextLine &line, float x) {
+  const auto &glyphs = line.shaped->glyphs;
+  std::vector<float> visual;
+  visual_offsets(line, visual);
+  uint32_t best = 0;
+  float nearest = std::numeric_limits<float>::max();
+  for (uint32_t i = 0; i < visual.size(); ++i) {
+    const float right = visual[i] + glyphs[line.first + i].x_advance;
+    const float distance = x < visual[i] ? visual[i] - x : x >= right ? x - right : 0;
+    if (distance < nearest) {
+      nearest = distance;
+      best = i;
+    }
+  }
+  const ShapedGlyph &g = glyphs[line.first + best];
+  const bool left_half = x < visual[best] + g.x_advance / 2;
+  return line.para_byte + (left_half != ((g.level & 1) != 0) ? g.cluster_start_byte : g.cluster_end_byte);
+}
+
 float line_x(const TextLine &line, size_t byte) {
   const auto &glyphs = line.shaped->glyphs;
   if (line.first >= line.last) return 0;
+  if (line.shaped->has_rtl) return bidi_line_x(line, byte - line.para_byte);
   const float origin = glyphs[line.first].x;
   const size_t relative = byte - line.para_byte;
   for (uint32_t i = line.first; i < line.last; ++i) {
@@ -81,6 +120,7 @@ float line_x(const TextLine &line, size_t byte) {
 size_t byte_at_x(const TextLine &line, float x) {
   const auto &glyphs = line.shaped->glyphs;
   if (line.first >= line.last) return line.start_byte;
+  if (line.shaped->has_rtl) return bidi_byte_at_x(line, x);
   const float origin = glyphs[line.first].x;
   for (uint32_t i = line.first; i < line.last; ++i) {
     const ShapedGlyph &g = glyphs[i];
@@ -397,6 +437,11 @@ void Engine::paint_input(const Node &node, float alpha, IRect clip) {
     for (uint32_t i = 0; i < node.line_count; ++i) {
       const TextLine &line = lines[node.line_first + i];
       if (to <= line.start_byte || from > line.end_byte) continue;
+      if (line.shaped->has_rtl) {
+        const float a = line_x(line, std::max<size_t>(from, line.start_byte)), b = line_x(line, std::min<size_t>(to, line.end_byte));
+        if (a != b) draw(left + std::min(a, b) - state.scroll_x, top + line_height * static_cast<float>(i), std::abs(b - a));
+        continue;
+      }
       const float x0 = from <= line.start_byte ? 0 : line_x(line, from);
       const bool crosses = to > line.end_byte;
       const float x1 = crosses ? line.width + 4 * dpr : to >= line.end_byte ? line.width : line_x(line, to);

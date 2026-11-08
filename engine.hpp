@@ -33,6 +33,8 @@ struct TextLine {
   uint32_t para_byte = 0, start_byte = 0, end_byte = 0;
 };
 
+void visual_offsets(const TextLine &line, std::vector<float> &out);
+
 struct UniformRef {
   std::string_view name;
   float v[4] = {};
@@ -246,6 +248,7 @@ class Engine {
   std::string sans_regular_, sans_bold_, mono_regular_, mono_bold_;
   std::unordered_map<uint64_t, FontInstanceId> font_cache_;
   int32_t scroll_parent_ = -1;
+  std::vector<float> visual_;
   RoundClip round_clip_;
 
   FontInstanceId font_for(const Node &node);
