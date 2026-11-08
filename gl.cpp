@@ -117,12 +117,21 @@ const char *const kUiFragment = R"(
 precision highp float;
 precision highp int;
 uniform sampler2D u_atlas;
+uniform vec2 u_fb;
+uniform vec4 u_clip;
+uniform float u_clip_radius;
 flat in vec4 v_color;
 flat in uint v_flags;
 flat in vec2 v_size;
 flat in vec2 v_params;
 in vec2 v_local;
 out vec4 out_color;
+float clip_cover() {
+  if (u_clip_radius <= 0.0) return 1.0;
+  vec2 half_size = u_clip.zw * 0.5;
+  vec2 q = abs(vec2(gl_FragCoord.x, u_fb.y - gl_FragCoord.y) - u_clip.xy - half_size) - half_size + vec2(u_clip_radius);
+  return smoothstep(0.5, -0.5, length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - u_clip_radius);
+}
 void main() {
   const uint solid = 1u;
   const uint color_glyph = 4u;
@@ -139,7 +148,7 @@ void main() {
                            : smoothstep(0.5, -0.5, dist);
       if (cover <= 0.0) discard;
     }
-    float a = v_color.a * cover;
+    float a = v_color.a * cover * clip_cover();
     out_color = vec4(v_color.rgb * a, a);
     return;
   }
@@ -147,10 +156,10 @@ void main() {
   ivec2 local = clamp(ivec2(floor(v_local)), ivec2(0), glyph_size - ivec2(1));
   vec4 texel = texelFetch(u_atlas, ivec2(v_params) + local, 0);
   if ((v_flags & color_glyph) != 0u) {
-    out_color = texel * v_color.a;
+    out_color = texel * v_color.a * clip_cover();
     return;
   }
-  float a = v_color.a * texel.a;
+  float a = v_color.a * texel.a * clip_cover();
   out_color = vec4(v_color.rgb * a, a);
 }
 )";
@@ -177,7 +186,18 @@ out vec4 qui_out;
 )";
 
 const char *const kShaderFooter = R"(
-void main() { qui_out = shade(v_uv); }
+uniform vec2 qui_fb;
+uniform vec4 qui_clip;
+uniform float qui_clip_radius;
+void main() {
+  vec4 color = shade(v_uv);
+  if (qui_clip_radius > 0.0) {
+    vec2 half_size = qui_clip.zw * 0.5;
+    vec2 q = abs(vec2(gl_FragCoord.x, qui_fb.y - gl_FragCoord.y) - qui_clip.xy - half_size) - half_size + vec2(qui_clip_radius);
+    color *= smoothstep(0.5, -0.5, length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - qui_clip_radius);
+  }
+  qui_out = color;
+}
 )";
 
 constexpr size_t kMaxPrograms = 32;
@@ -188,6 +208,8 @@ class GlBackend final : public Backend {
     program_ = link(kUiVertex, kUiFragment, "ui");
     u_fb_ = gl_.GetUniformLocation(program_, "u_fb");
     u_atlas_ = gl_.GetUniformLocation(program_, "u_atlas");
+    u_clip_ = gl_.GetUniformLocation(program_, "u_clip");
+    u_clip_radius_ = gl_.GetUniformLocation(program_, "u_clip_radius");
     gl_.GenVertexArrays(1, &vao_);
     gl_.GenBuffers(1, &vbo_);
     gl_.BindVertexArray(vao_);
@@ -252,11 +274,13 @@ class GlBackend final : public Backend {
     for (const Batch &batch : frame.batches) {
       gl_.Scissor(batch.clip.x, height_ - batch.clip.y - batch.clip.h, batch.clip.w, batch.clip.h);
       if (batch.shader >= 0) {
-        draw_shader(frame.shaders[static_cast<size_t>(batch.shader)], time);
+        draw_shader(frame.shaders[static_cast<size_t>(batch.shader)], batch.round, time);
         bind_ui();
         continue;
       }
       if (batch.count == 0) continue;
+      gl_.Uniform4f(u_clip_, static_cast<float>(batch.round.x), static_cast<float>(batch.round.y), static_cast<float>(batch.round.w), static_cast<float>(batch.round.h));
+      gl_.Uniform1f(u_clip_radius_, batch.round.radius);
       if (batch.page >= 0 && static_cast<size_t>(batch.page) < pages_.size()) gl_.BindTexture(GL_TEXTURE_2D, pages_[static_cast<size_t>(batch.page)]);
       const auto base = static_cast<uintptr_t>(batch.first) * sizeof(Instance);
       const auto at = [&](uintptr_t offset) { return reinterpret_cast<const void *>(base + offset); };
@@ -292,7 +316,7 @@ class GlBackend final : public Backend {
  private:
   struct Program {
     GLuint id = 0;
-    GLint rect = -1, fb = -1, time = -1, resolution = -1;
+    GLint rect = -1, fb = -1, time = -1, resolution = -1, clip = -1, clip_radius = -1;
     uint64_t used = 0;
     std::string error;
     std::unordered_map<std::string, std::pair<GLint, GLenum>> uniforms;
@@ -371,6 +395,8 @@ class GlBackend final : public Backend {
     program.fb = gl_.GetUniformLocation(program.id, "qui_fb");
     program.time = gl_.GetUniformLocation(program.id, "u_time");
     program.resolution = gl_.GetUniformLocation(program.id, "u_resolution");
+    program.clip = gl_.GetUniformLocation(program.id, "qui_clip");
+    program.clip_radius = gl_.GetUniformLocation(program.id, "qui_clip_radius");
     GLint count = 0;
     gl_.GetProgramiv(program.id, GL_ACTIVE_UNIFORMS, &count);
     for (GLint i = 0; i < count; ++i) {
@@ -383,13 +409,15 @@ class GlBackend final : public Backend {
     return program;
   }
 
-  void draw_shader(const ShaderDraw &draw, double time) {
+  void draw_shader(const ShaderDraw &draw, const RoundClip &round, double time) {
     Program &program = program_for(draw);
     if (!program.id) return;
     gl_.UseProgram(program.id);
     gl_.BlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     gl_.Uniform4f(program.rect, static_cast<float>(draw.rect.x), static_cast<float>(draw.rect.y), static_cast<float>(draw.rect.w), static_cast<float>(draw.rect.h));
     gl_.Uniform2f(program.fb, static_cast<float>(width_), static_cast<float>(height_));
+    gl_.Uniform4f(program.clip, static_cast<float>(round.x), static_cast<float>(round.y), static_cast<float>(round.w), static_cast<float>(round.h));
+    gl_.Uniform1f(program.clip_radius, round.radius);
     if (program.time >= 0) gl_.Uniform1f(program.time, static_cast<float>(time));
     if (program.resolution >= 0) gl_.Uniform2f(program.resolution, static_cast<float>(draw.rect.w), static_cast<float>(draw.rect.h));
     for (const ShaderUniform &uniform : draw.uniforms) {
@@ -415,7 +443,7 @@ class GlBackend final : public Backend {
   bool offscreen_;
   std::string version_;
   GLuint program_ = 0, vao_ = 0, vbo_ = 0, fbo_ = 0, color_ = 0;
-  GLint u_fb_ = -1, u_atlas_ = -1;
+  GLint u_fb_ = -1, u_atlas_ = -1, u_clip_ = -1, u_clip_radius_ = -1;
   int width_ = 0, height_ = 0;
   std::vector<GLuint> pages_;
   std::unordered_map<uint64_t, Program> programs_;

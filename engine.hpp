@@ -80,9 +80,16 @@ struct Instance {
 };
 static_assert(sizeof(Instance) == 40);
 
+struct RoundClip {
+  int x = 0, y = 0, w = 0, h = 0;
+  float radius = 0;
+  bool operator==(const RoundClip &) const = default;
+};
+
 struct Batch {
   uint32_t first = 0, count = 0;
   IRect clip;
+  RoundClip round;
   int page = -1;
   int shader = -1;
 };
@@ -235,6 +242,7 @@ class Engine {
   std::string sans_regular_, sans_bold_, mono_regular_, mono_bold_;
   std::unordered_map<uint64_t, FontInstanceId> font_cache_;
   int32_t scroll_parent_ = -1;
+  RoundClip round_clip_;
 
   FontInstanceId font_for(const Node &node);
   uint32_t resolve(uint32_t color) const;

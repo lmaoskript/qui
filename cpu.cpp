@@ -79,6 +79,8 @@ class Cpu final : public CpuBackend {
       if (batch.shader >= 0) continue;
       const IRect clip = intersect(batch.clip, damage);
       if (clip.empty()) continue;
+      saved_.clear();
+      each_corner_pixel(batch.round, clip, [&](int, int, uint32_t &pixel) { saved_.push_back(pixel); });
       for (uint32_t i = batch.first; i < batch.first + batch.count; ++i) {
         const Instance &inst = frame.instances[i];
         if (inst.flags & InstSolid) {
@@ -90,6 +92,19 @@ class Cpu final : public CpuBackend {
           glyph(inst, clip, batch.page);
         }
       }
+      size_t next = 0;
+      const float half_w = static_cast<float>(batch.round.w) / 2, half_h = static_cast<float>(batch.round.h) / 2;
+      const float radius = std::min({batch.round.radius, half_w, half_h});
+      each_corner_pixel(batch.round, clip, [&](int x, int y, uint32_t &pixel) {
+        const float dist = rounded_distance(static_cast<float>(x - batch.round.x) + 0.5f, static_cast<float>(y - batch.round.y) + 0.5f, half_w, half_h, radius);
+        const auto cover = static_cast<uint32_t>(smooth_coverage(dist) * 255 + 0.5f);
+        const uint32_t before = saved_[next++];
+        if (cover == 255) return;
+        uint32_t mixed = 0;
+        for (const uint32_t shift : {0u, 8u, 16u, 24u})
+          mixed |= (mul((pixel >> shift) & 0xff, cover) + mul((before >> shift) & 0xff, 255 - cover)) << shift;
+        pixel = mixed;
+      });
     }
   }
 
@@ -102,6 +117,24 @@ class Cpu final : public CpuBackend {
     uint32_t width = 0, height = 0;
     std::vector<uint8_t> pixels;
   };
+
+  template <typename Visit>
+  void each_corner_pixel(const RoundClip &round, IRect clip, Visit &&visit) {
+    if (round.radius <= 0) return;
+    const int size = std::min(static_cast<int>(std::ceil(round.radius)) + 1, (std::min(round.w, round.h) + 1) / 2);
+    const IRect corners[4] = {{round.x, round.y, size, size},
+                              {round.x + round.w - size, round.y, size, size},
+                              {round.x, round.y + round.h - size, size, size},
+                              {round.x + round.w - size, round.y + round.h - size, size, size}};
+    for (const IRect &corner : corners) {
+      const IRect r = intersect(corner, clip);
+      if (r.empty()) continue;
+      for (int y = r.y; y < r.y + r.h; ++y) {
+        uint32_t *row = pixels_.data() + static_cast<size_t>(y) * width_;
+        for (int x = r.x; x < r.x + r.w; ++x) visit(x, y, row[x]);
+      }
+    }
+  }
 
   void solid(const Instance &inst, IRect clip) {
     const IRect r = intersect({static_cast<int>(inst.x), static_cast<int>(inst.y), static_cast<int>(inst.w), static_cast<int>(inst.h)}, clip);
@@ -192,7 +225,7 @@ class Cpu final : public CpuBackend {
   }
 
   int width_ = 0, height_ = 0;
-  std::vector<uint32_t> pixels_;
+  std::vector<uint32_t> pixels_, saved_;
   std::vector<Page> pages_;
 };
 

@@ -198,8 +198,8 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         node.hit = 1;
       }
       if (node.kind == KindInput) {
-        node.pad[0] = node.pad[2] = 6;
-        node.pad[1] = node.pad[3] = 10;
+        node.pad[0] = node.pad[2] = 5;
+        node.pad[1] = node.pad[3] = 9;
         node.radius = 6;
         node.bg = Inset;
         node.border = Line;
@@ -220,6 +220,8 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       continue;
     }
     if (op == OpEnd) {
+      if (Node &closing = nodes[stack.back()]; closing.border && closing.border_w > 0)
+        for (float &side : closing.pad) side += closing.border_w;
       if (stack.size() > 1) stack.pop_back();
       continue;
     }
@@ -746,12 +748,13 @@ void Engine::prune() {
 void Engine::add_instance(const Instance &instance, int page, IRect clip) {
   auto &batches = frame.batches;
   const bool same_clip = !batches.empty() && batches.back().clip.x == clip.x && batches.back().clip.y == clip.y &&
-                         batches.back().clip.w == clip.w && batches.back().clip.h == clip.h;
+                         batches.back().clip.w == clip.w && batches.back().clip.h == clip.h && batches.back().round == round_clip_;
   const bool page_ok = !batches.empty() && (page < 0 || batches.back().page < 0 || batches.back().page == page);
   if (batches.empty() || !same_clip || !page_ok || batches.back().shader >= 0) {
     Batch batch;
     batch.first = static_cast<uint32_t>(frame.instances.size());
     batch.clip = clip;
+    batch.round = round_clip_;
     batch.page = page;
     batches.push_back(batch);
   } else if (page >= 0) {
@@ -887,6 +890,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     Batch batch;
     batch.first = static_cast<uint32_t>(frame.instances.size());
     batch.clip = clip;
+    batch.round = radius > 0 ? RoundClip{bounds.x, bounds.y, bounds.w, bounds.h, radius} : round_clip_;
     batch.shader = static_cast<int>(frame.shaders.size());
     frame.batches.push_back(batch);
     frame.shaders.push_back(std::move(draw));
@@ -910,7 +914,13 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
   if (node.kind == KindInput) paint_input(node, alpha, clip);
 
   IRect child_clip = clip;
-  if (node.clip) child_clip = intersect(clip, bounds);
+  const RoundClip outer_round = round_clip_;
+  if (node.clip) {
+    const int border = node.border && node.border_w > 0 ? static_cast<int>(std::max(1.f, std::round(node.border_w * dpr))) : 0;
+    const IRect inner{bounds.x + border, bounds.y + border, bounds.w - border * 2, bounds.h - border * 2};
+    child_clip = intersect(clip, inner);
+    if (radius > static_cast<float>(border)) round_clip_ = {inner.x, inner.y, inner.w, inner.h, radius - static_cast<float>(border)};
+  }
   const int32_t outer_scroll = scroll_parent_;
   if (own_scroll >= 0) scroll_parent_ = own_scroll;
   paint_children(node, alpha, child_clip);
@@ -945,6 +955,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
       scrollbar(state.offset / (state.content - state.viewport), state.viewport / state.content);
     }
   }
+  round_clip_ = outer_round;
 }
 
 void Engine::paint_children(const Node &node, float opacity, IRect clip) {
@@ -962,6 +973,7 @@ void Engine::paint_children(const Node &node, float opacity, IRect clip) {
 
 void Engine::paint() {
   scroll_parent_ = -1;
+  round_clip_ = {};
   frame.instances.clear();
   frame.batches.clear();
   frame.shaders.clear();
@@ -990,7 +1002,7 @@ IRect Engine::swap_and_damage() {
     }
     for (size_t i = 0; i < frame.batches.size(); ++i) {
       const IRect &a = frame.batches[i].clip, &b = previous.batches[i].clip;
-      if (a.x != b.x || a.y != b.y || a.w != b.w || a.h != b.h || frame.batches[i].count != previous.batches[i].count) {
+      if (a.x != b.x || a.y != b.y || a.w != b.w || a.h != b.h || frame.batches[i].count != previous.batches[i].count || !(frame.batches[i].round == previous.batches[i].round)) {
         damage = full;
         break;
       }
