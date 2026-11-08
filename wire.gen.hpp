@@ -1,0 +1,152 @@
+#pragma once
+
+#include <cstdint>
+
+namespace qui {
+
+namespace wire {
+
+inline constexpr uint8_t kVersion = 1;
+inline constexpr int kThemeCount = 4;
+inline constexpr int kTokenCount = 19;
+
+enum Op : uint8_t {
+  OpEnd = 0,
+  OpOpen = 1,
+  OpFrame = 2,
+  OpDir = 3,
+  OpWidth = 4,
+  OpHeight = 5,
+  OpMinW = 6,
+  OpMaxW = 7,
+  OpMinH = 8,
+  OpMaxH = 9,
+  OpPad = 10,
+  OpGap = 11,
+  OpAlign = 12,
+  OpJustify = 13,
+  OpPos = 14,
+  OpBg = 15,
+  OpFg = 16,
+  OpBorder = 17,
+  OpRadius = 18,
+  OpOpacity = 19,
+  OpClip = 20,
+  OpScroll = 21,
+  OpHit = 22,
+  OpRole = 23,
+  OpLabel = 24,
+  OpText = 25,
+  OpFontSize = 26,
+  OpWeight = 27,
+  OpMono = 28,
+  OpEllipsis = 29,
+  OpVirtual = 30,
+  OpItem = 31,
+  OpSrc = 32,
+  OpUniform = 33,
+  OpFps = 34,
+};
+
+enum Kind : uint8_t {
+  KindBox = 0,
+  KindText = 1,
+  KindButton = 2,
+  KindList = 3,
+  KindShader = 4,
+};
+
+enum Dir : uint8_t {
+  DirColumn = 0,
+  DirRow = 1,
+  DirStack = 2,
+};
+
+enum SizeMode : uint8_t {
+  SizeFit = 0,
+  SizeFill = 1,
+  SizePx = 2,
+  SizePct = 3,
+};
+
+enum Flag : uint32_t {
+  FlagHovered = 1,
+  FlagPressed = 2,
+  FlagClicked = 4,
+  FlagRightClicked = 8,
+  FlagFocused = 16,
+  FlagDragStart = 32,
+  FlagDragging = 64,
+  FlagDragEnd = 128,
+};
+
+enum Token : uint8_t {
+  TokenBackground = 1,
+  TokenSurface = 2,
+  TokenRaised = 3,
+  TokenInset = 4,
+  TokenInk = 5,
+  TokenMuted = 6,
+  TokenStrong = 7,
+  TokenAccent = 8,
+  TokenAccent2 = 9,
+  TokenHover = 10,
+  TokenActive = 11,
+  TokenItem = 12,
+  TokenLine = 13,
+  TokenDanger = 14,
+  TokenSelection = 15,
+  TokenScrollbar = 16,
+  TokenScrollbarHot = 17,
+  TokenScrim = 18,
+  TokenShadow = 19,
+};
+
+inline constexpr uint32_t kThemes[kThemeCount][kTokenCount + 1] = {
+    {0, 0x0e0f11ff, 0x131417ff, 0x1a1c21fa, 0x121317f2, 0xdbe0ebf2, 0x737d8fb3, 0xf5f7ffff, 0x5294f5e6, 0x73b8fff2, 0xffffff0f, 0x293347d9, 0x1f2129a6, 0xffffff0e, 0xe64047d9, 0x33599961, 0xffffff14, 0xffffff2e, 0x00000099, 0x00000080},
+    {0, 0x08080aff, 0x0b0b0dff, 0x121216fa, 0x0d0d0ff2, 0xd6dbe6f2, 0x6b7585b3, 0xf5f7ffff, 0x478af2e6, 0x6badfff2, 0xffffff0f, 0x21293dd9, 0x17171ca6, 0xffffff0d, 0xe64047d9, 0x2e528c61, 0xffffff12, 0xffffff29, 0x000000a6, 0x0000008c},
+    {0, 0x121211ff, 0x181817ff, 0x1f1f1dfa, 0x161614f2, 0xdbd9ccf2, 0x807a70b3, 0xf5f2e6ff, 0xb8a380e6, 0xdbc7a3f2, 0xfffae60f, 0x33302bd9, 0x242421a6, 0xfffae60d, 0xe64047d9, 0x73614261, 0xfffae614, 0xfffae62e, 0x00000099, 0x00000080},
+    {0, 0x0f0f0fff, 0x141414ff, 0x1a1a1afa, 0x121212f2, 0xdbdbdbf2, 0x757575b3, 0xf5f5f5ff, 0x5c94e6e6, 0x85b8faf2, 0xffffff0f, 0x2b2b2bd9, 0x1f1f1fa6, 0xffffff0d, 0xe64047d9, 0x3d527a61, 0xffffff14, 0xffffff2e, 0x00000099, 0x00000080},
+};
+
+}  // namespace wire
+
+inline constexpr uint8_t Start = 0;
+inline constexpr uint8_t Center = 1;
+inline constexpr uint8_t End = 2;
+inline constexpr uint8_t Stretch = 3;
+inline constexpr uint8_t Between = 4;
+
+inline constexpr uint8_t RoleNone = 0;
+inline constexpr uint8_t RoleHeading = 1;
+inline constexpr uint8_t RoleLink = 2;
+inline constexpr uint8_t RoleImage = 3;
+inline constexpr uint8_t RoleMain = 4;
+inline constexpr uint8_t RoleNav = 5;
+
+inline constexpr uint8_t Slate = 0;
+inline constexpr uint8_t Midnight = 1;
+inline constexpr uint8_t Warm = 2;
+inline constexpr uint8_t Neutral = 3;
+
+inline constexpr uint32_t Background = 1u << 24;
+inline constexpr uint32_t Surface = 2u << 24;
+inline constexpr uint32_t Raised = 3u << 24;
+inline constexpr uint32_t Inset = 4u << 24;
+inline constexpr uint32_t Ink = 5u << 24;
+inline constexpr uint32_t Muted = 6u << 24;
+inline constexpr uint32_t Strong = 7u << 24;
+inline constexpr uint32_t Accent = 8u << 24;
+inline constexpr uint32_t Accent2 = 9u << 24;
+inline constexpr uint32_t Hover = 10u << 24;
+inline constexpr uint32_t Active = 11u << 24;
+inline constexpr uint32_t Item = 12u << 24;
+inline constexpr uint32_t Line = 13u << 24;
+inline constexpr uint32_t Danger = 14u << 24;
+inline constexpr uint32_t Selection = 15u << 24;
+inline constexpr uint32_t Scrollbar = 16u << 24;
+inline constexpr uint32_t ScrollbarHot = 17u << 24;
+inline constexpr uint32_t Scrim = 18u << 24;
+inline constexpr uint32_t Shadow = 19u << 24;
+
+}  // namespace qui

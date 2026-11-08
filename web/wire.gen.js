@@ -1,0 +1,18 @@
+export const Version = 1;
+
+export const Op = {End: 0, Open: 1, Frame: 2, Dir: 3, Width: 4, Height: 5, MinW: 6, MaxW: 7, MinH: 8, MaxH: 9, Pad: 10, Gap: 11, Align: 12, Justify: 13, Pos: 14, Bg: 15, Fg: 16, Border: 17, Radius: 18, Opacity: 19, Clip: 20, Scroll: 21, Hit: 22, Role: 23, Label: 24, Text: 25, FontSize: 26, Weight: 27, Mono: 28, Ellipsis: 29, Virtual: 30, Item: 31, Src: 32, Uniform: 33, Fps: 34};
+export const Kind = {Box: 0, Text: 1, Button: 2, List: 3, Shader: 4};
+export const Dir = {Column: 0, Row: 1, Stack: 2};
+export const Size = {Fit: 0, Fill: 1, Px: 2, Pct: 3};
+export const Align = {Start: 0, Center: 1, End: 2, Stretch: 3, Between: 4};
+export const Role = {None: 0, Heading: 1, Link: 2, Image: 3, Main: 4, Nav: 5};
+export const Flag = {Hovered: 1, Pressed: 2, Clicked: 4, RightClicked: 8, Focused: 16, DragStart: 32, Dragging: 64, DragEnd: 128};
+
+export const Tokens = ["", "Background", "Surface", "Raised", "Inset", "Ink", "Muted", "Strong", "Accent", "Accent2", "Hover", "Active", "Item", "Line", "Danger", "Selection", "Scrollbar", "ScrollbarHot", "Scrim", "Shadow"];
+
+export const Themes = [
+  {Background: "rgba(14,15,17,1)", Surface: "rgba(19,20,23,1)", Raised: "rgba(26,28,33,0.98)", Inset: "rgba(18,19,23,0.95)", Ink: "rgba(219,224,235,0.95)", Muted: "rgba(115,125,143,0.7)", Strong: "rgba(245,247,255,1)", Accent: "rgba(82,148,245,0.9)", Accent2: "rgba(115,184,255,0.95)", Hover: "rgba(255,255,255,0.06)", Active: "rgba(41,51,71,0.85)", Item: "rgba(31,33,41,0.65)", Line: "rgba(255,255,255,0.055)", Danger: "rgba(230,64,71,0.85)", Selection: "rgba(51,89,153,0.38)", Scrollbar: "rgba(255,255,255,0.08)", ScrollbarHot: "rgba(255,255,255,0.18)", Scrim: "rgba(0,0,0,0.6)", Shadow: "rgba(0,0,0,0.5)"},
+  {Background: "rgba(8,8,10,1)", Surface: "rgba(11,11,13,1)", Raised: "rgba(18,18,22,0.98)", Inset: "rgba(13,13,15,0.95)", Ink: "rgba(214,219,230,0.95)", Muted: "rgba(107,117,133,0.7)", Strong: "rgba(245,247,255,1)", Accent: "rgba(71,138,242,0.9)", Accent2: "rgba(107,173,255,0.95)", Hover: "rgba(255,255,255,0.06)", Active: "rgba(33,41,61,0.85)", Item: "rgba(23,23,28,0.65)", Line: "rgba(255,255,255,0.05)", Danger: "rgba(230,64,71,0.85)", Selection: "rgba(46,82,140,0.38)", Scrollbar: "rgba(255,255,255,0.07)", ScrollbarHot: "rgba(255,255,255,0.16)", Scrim: "rgba(0,0,0,0.65)", Shadow: "rgba(0,0,0,0.55)"},
+  {Background: "rgba(18,18,17,1)", Surface: "rgba(24,24,23,1)", Raised: "rgba(31,31,29,0.98)", Inset: "rgba(22,22,20,0.95)", Ink: "rgba(219,217,204,0.95)", Muted: "rgba(128,122,112,0.7)", Strong: "rgba(245,242,230,1)", Accent: "rgba(184,163,128,0.9)", Accent2: "rgba(219,199,163,0.95)", Hover: "rgba(255,250,230,0.06)", Active: "rgba(51,48,43,0.85)", Item: "rgba(36,36,33,0.65)", Line: "rgba(255,250,230,0.05)", Danger: "rgba(230,64,71,0.85)", Selection: "rgba(115,97,66,0.38)", Scrollbar: "rgba(255,250,230,0.08)", ScrollbarHot: "rgba(255,250,230,0.18)", Scrim: "rgba(0,0,0,0.6)", Shadow: "rgba(0,0,0,0.5)"},
+  {Background: "rgba(15,15,15,1)", Surface: "rgba(20,20,20,1)", Raised: "rgba(26,26,26,0.98)", Inset: "rgba(18,18,18,0.95)", Ink: "rgba(219,219,219,0.95)", Muted: "rgba(117,117,117,0.7)", Strong: "rgba(245,245,245,1)", Accent: "rgba(92,148,230,0.9)", Accent2: "rgba(133,184,250,0.95)", Hover: "rgba(255,255,255,0.06)", Active: "rgba(43,43,43,0.85)", Item: "rgba(31,31,31,0.65)", Line: "rgba(255,255,255,0.05)", Danger: "rgba(230,64,71,0.85)", Selection: "rgba(61,82,122,0.38)", Scrollbar: "rgba(255,255,255,0.08)", ScrollbarHot: "rgba(255,255,255,0.18)", Scrim: "rgba(0,0,0,0.6)", Shadow: "rgba(0,0,0,0.5)"},
+];

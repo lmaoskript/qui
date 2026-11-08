@@ -1,0 +1,179 @@
+# Single source of truth for the wire format and themes.
+# Run `go run ./tools/gen` after editing.
+
+version 1
+
+kind Box 0
+kind Text 1
+kind Button 2
+kind List 3
+kind Shader 4
+
+dir Column 0
+dir Row 1
+dir Stack 2
+
+size Fit 0
+size Fill 1
+size Px 2
+size Pct 3
+
+align Start 0
+align Center 1
+align End 2
+align Stretch 3
+align Between 4
+
+role None 0
+role Heading 1
+role Link 2
+role Image 3
+role Main 4
+role Nav 5
+
+# payload after each op is documented in docs/wire.md
+op End 0
+op Open 1
+op Frame 2
+op Dir 3
+op Width 4
+op Height 5
+op MinW 6
+op MaxW 7
+op MinH 8
+op MaxH 9
+op Pad 10
+op Gap 11
+op Align 12
+op Justify 13
+op Pos 14
+op Bg 15
+op Fg 16
+op Border 17
+op Radius 18
+op Opacity 19
+op Clip 20
+op Scroll 21
+op Hit 22
+op Role 23
+op Label 24
+op Text 25
+op FontSize 26
+op Weight 27
+op Mono 28
+op Ellipsis 29
+op Virtual 30
+op Item 31
+op Src 32
+op Uniform 33
+op Fps 34
+
+flag Hovered 1
+flag Pressed 2
+flag Clicked 4
+flag RightClicked 8
+flag Focused 16
+flag DragStart 32
+flag Dragging 64
+flag DragEnd 128
+
+token Background 1
+token Surface 2
+token Raised 3
+token Inset 4
+token Ink 5
+token Muted 6
+token Strong 7
+token Accent 8
+token Accent2 9
+token Hover 10
+token Active 11
+token Item 12
+token Line 13
+token Danger 14
+token Selection 15
+token Scrollbar 16
+token ScrollbarHot 17
+token Scrim 18
+token Shadow 19
+
+theme Slate Background 0.056 0.059 0.068 1
+theme Slate Surface 0.075 0.080 0.092 1
+theme Slate Raised 0.10 0.11 0.13 0.98
+theme Slate Inset 0.07 0.075 0.090 0.95
+theme Slate Ink 0.86 0.88 0.92 0.95
+theme Slate Muted 0.45 0.49 0.56 0.70
+theme Slate Strong 0.96 0.97 1 1
+theme Slate Accent 0.32 0.58 0.96 0.90
+theme Slate Accent2 0.45 0.72 1 0.95
+theme Slate Hover 1 1 1 0.06
+theme Slate Active 0.16 0.20 0.28 0.85
+theme Slate Item 0.12 0.13 0.16 0.65
+theme Slate Line 1 1 1 0.055
+theme Slate Danger 0.90 0.25 0.28 0.85
+theme Slate Selection 0.20 0.35 0.60 0.38
+theme Slate Scrollbar 1 1 1 0.08
+theme Slate ScrollbarHot 1 1 1 0.18
+theme Slate Scrim 0 0 0 0.60
+theme Slate Shadow 0 0 0 0.50
+
+theme Midnight Background 0.033 0.033 0.038 1
+theme Midnight Surface 0.045 0.045 0.052 1
+theme Midnight Raised 0.07 0.07 0.085 0.98
+theme Midnight Inset 0.05 0.05 0.06 0.95
+theme Midnight Ink 0.84 0.86 0.90 0.95
+theme Midnight Muted 0.42 0.46 0.52 0.70
+theme Midnight Strong 0.96 0.97 1 1
+theme Midnight Accent 0.28 0.54 0.95 0.90
+theme Midnight Accent2 0.42 0.68 1 0.95
+theme Midnight Hover 1 1 1 0.06
+theme Midnight Active 0.13 0.16 0.24 0.85
+theme Midnight Item 0.09 0.09 0.11 0.65
+theme Midnight Line 1 1 1 0.05
+theme Midnight Danger 0.90 0.25 0.28 0.85
+theme Midnight Selection 0.18 0.32 0.55 0.38
+theme Midnight Scrollbar 1 1 1 0.07
+theme Midnight ScrollbarHot 1 1 1 0.16
+theme Midnight Scrim 0 0 0 0.65
+theme Midnight Shadow 0 0 0 0.55
+
+theme Warm Background 0.070 0.070 0.067 1
+theme Warm Surface 0.095 0.095 0.090 1
+theme Warm Raised 0.12 0.12 0.115 0.98
+theme Warm Inset 0.085 0.085 0.080 0.95
+theme Warm Ink 0.86 0.85 0.80 0.95
+theme Warm Muted 0.50 0.48 0.44 0.70
+theme Warm Strong 0.96 0.95 0.90 1
+theme Warm Accent 0.72 0.64 0.50 0.90
+theme Warm Accent2 0.86 0.78 0.64 0.95
+theme Warm Hover 1 0.98 0.90 0.06
+theme Warm Active 0.20 0.19 0.17 0.85
+theme Warm Item 0.14 0.14 0.13 0.65
+theme Warm Line 1 0.98 0.90 0.05
+theme Warm Danger 0.90 0.25 0.28 0.85
+theme Warm Selection 0.45 0.38 0.26 0.38
+theme Warm Scrollbar 1 0.98 0.90 0.08
+theme Warm ScrollbarHot 1 0.98 0.90 0.18
+theme Warm Scrim 0 0 0 0.60
+theme Warm Shadow 0 0 0 0.50
+
+theme Neutral Background 0.059 0.059 0.059 1
+theme Neutral Surface 0.080 0.080 0.080 1
+theme Neutral Raised 0.10 0.10 0.10 0.98
+theme Neutral Inset 0.07 0.07 0.07 0.95
+theme Neutral Ink 0.86 0.86 0.86 0.95
+theme Neutral Muted 0.46 0.46 0.46 0.70
+theme Neutral Strong 0.96 0.96 0.96 1
+theme Neutral Accent 0.36 0.58 0.90 0.90
+theme Neutral Accent2 0.52 0.72 0.98 0.95
+theme Neutral Hover 1 1 1 0.06
+theme Neutral Active 0.17 0.17 0.17 0.85
+theme Neutral Item 0.12 0.12 0.12 0.65
+theme Neutral Line 1 1 1 0.05
+theme Neutral Danger 0.90 0.25 0.28 0.85
+theme Neutral Selection 0.24 0.32 0.48 0.38
+theme Neutral Scrollbar 1 1 1 0.08
+theme Neutral ScrollbarHot 1 1 1 0.18
+theme Neutral Scrim 0 0 0 0.60
+theme Neutral Shadow 0 0 0 0.50
+
