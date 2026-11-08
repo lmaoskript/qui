@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 2
+const wireVersion = 3
 
 const (
 	opEnd         = 0
@@ -42,6 +42,7 @@ const (
 	opMultiline   = 36
 	opPassword    = 37
 	opFocus       = 38
+	opZ           = 39
 )
 
 const (
@@ -77,6 +78,7 @@ const (
 	flagDragEnd      = 128
 	flagChanged      = 256
 	flagSubmitted    = 512
+	flagShaderError  = 1024
 )
 
 const (

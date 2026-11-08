@@ -50,6 +50,7 @@ struct Node {
   float w_val = 0, h_val = 0, min_w = 0, max_w = 0, min_h = 0, max_h = 0;
   float pad[4] = {};
   float gap = 0, pos_x = 0, pos_y = 0;
+  int32_t z = 0;
   uint32_t bg = 0, fg = 0, border = 0;
   float border_w = 0, radius = 0, opacity = 1, font_size = 0;
   std::string_view text, label, src, placeholder;
@@ -116,6 +117,8 @@ class Backend {
   virtual void upload(const AtlasUpload &upload) = 0;
   virtual void draw(const FrameData &frame, IRect damage, double time) = 0;
   virtual void read_pixels(std::vector<uint32_t> &out) = 0;
+  virtual std::string_view shader_error(uint64_t) const { return {}; }
+  virtual bool take_compiled() { return false; }
 };
 
 class CpuBackend : public Backend {
@@ -131,6 +134,7 @@ struct HitEntry {
   float x = 0, y = 0, w = 0, h = 0;
   float cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0;
   bool press = false, scroll = false, focusable = false;
+  int32_t scroll_parent = -1;
 };
 
 struct ScrollState {
@@ -230,6 +234,7 @@ class Engine {
  private:
   std::string sans_regular_, sans_bold_, mono_regular_, mono_bold_;
   std::unordered_map<uint64_t, FontInstanceId> font_cache_;
+  int32_t scroll_parent_ = -1;
 
   FontInstanceId font_for(const Node &node);
   uint32_t resolve(uint32_t color) const;
@@ -244,6 +249,7 @@ class Engine {
   void apply_input_view(Node &node, const InputState &state);
   float input_text_top(const Node &node, const InputState &state) const;
   void paint_node(int index, float opacity, IRect clip);
+  void paint_children(const Node &node, float opacity, IRect clip);
   void paint_text(const Node &node, float opacity, IRect clip, float dx = 0, float dy = 0, uint32_t color_override = 0);
   void paint_input(const Node &node, float alpha, IRect clip);
   void add_rect(float x, float y, float w, float h, uint32_t color, float radius, float stroke, IRect clip);

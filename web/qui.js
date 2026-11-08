@@ -1,8 +1,9 @@
 import { Align, Dir, Flag, Key, Kind, Mod, Op, Role, Size, Themes, Tokens, Version } from "./wire.gen.js";
 
-const HEADER = 48;
+const HEADER = 64;
 const SLOT = 48;
 const OVERSCAN_ROWS = 6;
+const DRAG_THRESHOLD = 4;
 const MAGIC = 0x31495551;
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
@@ -43,6 +44,8 @@ const baseCss = `
 .qui-list { overflow-y: auto; display: block; }
 .qui-root, .qui-root * { scrollbar-width: thin; scrollbar-color: var(--qui-Scrollbar) transparent; }
 .qui-root canvas { display: block; }
+.qui-root [data-qh], .qui-list, .qui-text { pointer-events: auto; }
+.qui-root [data-qh]:not(.qui-input) { user-select: none; -webkit-user-select: none; touch-action: pan-y; }
 `;
 
 class Reader {
@@ -153,6 +156,7 @@ function decode(bytes, length) {
       case Op.Multiline: node.multiline = r.u8(); break;
       case Op.Password: node.password = true; break;
       case Op.Focus: node.focus = r.u8(); break;
+      case Op.Z: node.z = r.u32() | 0; break;
       case Op.Uniform: {
         const nameLength = r.u8();
         const name = decoder.decode(r.bytes.subarray(r.at, r.at + nameLength));
@@ -189,6 +193,7 @@ function css(node, parent) {
 
   if (node.absolute) {
     s += `position:absolute;left:${node.x}px;top:${node.y}px;`;
+    if (node.kind === Kind.Box && !node.hit && !node.scroll) s += "pointer-events:none;";
     if (wMode === Size.Fill) s += "width:100%;";
     if (hMode === Size.Fill) s += "height:100%;";
   } else if (row) {
@@ -216,7 +221,8 @@ function css(node, parent) {
   if (node.radius) s += `border-radius:${node.radius}px;`;
   if (node.opacity) s += `opacity:${node.opacity};`;
   if (node.clip) s += "overflow:hidden;";
-  if (node.scroll) s += "overflow-y:auto;";
+  if (node.scroll) s += "overflow-y:auto;pointer-events:auto;";
+  if (node.z) s += `z-index:${node.z};`;
 
   if (node.kind === Kind.Box) {
     if (node.dir === Dir.Stack) s += "display:grid;";
@@ -294,26 +300,38 @@ class ShaderView {
   compile() {
     const gl = this.gl;
     if (!gl) return;
+    this.error = undefined;
     const build = (type, source) => {
       const shader = gl.createShader(type);
       gl.shaderSource(shader, source);
       gl.compileShader(shader);
       if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        console.error(`qui: shader failed to compile, showing its background instead:\n${gl.getShaderInfoLog(shader)}`);
+        this.error = gl.getShaderInfoLog(shader);
+        console.error(`qui: shader failed to compile, showing its background instead:\n${this.error}`);
+        gl.deleteShader(shader);
         return null;
       }
       return shader;
     };
     const vs = build(gl.VERTEX_SHADER, shaderVertex);
-    const fs = build(gl.FRAGMENT_SHADER, `${shaderHeader}${this.src}\nvoid main() { qui_out = shade(v_uv); }\n`);
+    const fs = build(gl.FRAGMENT_SHADER, `${shaderHeader}#line 1\n${this.src}\nvoid main() { qui_out = shade(v_uv); }\n`);
+    if (this.program) gl.deleteProgram(this.program);
     this.program = null;
-    if (!vs || !fs) return;
+    if (!vs || !fs) {
+      if (vs) gl.deleteShader(vs);
+      if (fs) gl.deleteShader(fs);
+      return;
+    }
     const program = gl.createProgram();
     gl.attachShader(program, vs);
     gl.attachShader(program, fs);
     gl.linkProgram(program);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error(`qui: shader failed to link: ${gl.getProgramInfoLog(program)}`);
+      this.error = gl.getProgramInfoLog(program);
+      console.error(`qui: shader failed to link: ${this.error}`);
+      gl.deleteProgram(program);
       return;
     }
     this.program = program;
@@ -384,6 +402,11 @@ class Patcher {
     this.rafPending = false;
     this.lastTime = performance.now();
     this.pointer = [-1, -1];
+    this.down = false;
+    this.press = null;
+    this.swallowClick = false;
+    this.preventKeys = new Set();
+    this.engineMs = 0;
     this.themeIndex = -1;
     this.wake = null;
     this.bind();
@@ -406,15 +429,62 @@ class Patcher {
       this.oneShots.push([e, bit]);
       this.requestFrame();
     };
-    this.root.addEventListener("click", (e) => { const el = target(e); if (el) shot(el, Flag.Clicked); });
+    this.root.addEventListener("click", (e) => {
+      if (this.swallowClick) {
+        this.swallowClick = false;
+        return;
+      }
+      const el = target(e);
+      if (el) shot(el, Flag.Clicked);
+    });
     this.root.addEventListener("contextmenu", (e) => { const el = target(e); if (el) shot(el, Flag.RightClicked); });
     this.root.addEventListener("pointerover", (e) => { const el = target(e); if (el) flag(el, Flag.Hovered, true); });
     this.root.addEventListener("pointerout", (e) => { const el = target(e); if (el) flag(el, Flag.Hovered, false); });
-    this.root.addEventListener("pointerdown", (e) => { const el = target(e); if (el) flag(el, Flag.Pressed, true); });
-    this.root.addEventListener("pointerup", (e) => { const el = target(e); if (el) flag(el, Flag.Pressed, false); });
+    this.root.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      this.down = true;
+      this.swallowClick = false;
+      this.movePointer(e);
+      this.requestFrame();
+      const el = target(e);
+      if (!el) return;
+      flag(el, Flag.Pressed, true);
+      this.press = { el, startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY, dragging: false };
+    });
+    const release = () => {
+      this.down = false;
+      this.requestFrame();
+      const press = this.press;
+      this.press = null;
+      if (!press) return;
+      flag(press.el, Flag.Pressed, false);
+      if (!press.dragging) return;
+      flag(press.el, Flag.Dragging, false);
+      shot(press.el, Flag.DragEnd);
+      this.swallowClick = true;
+    };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
     this.root.addEventListener("focusin", (e) => { const el = target(e); if (el) flag(el, Flag.Focused, true); });
     this.root.addEventListener("focusout", (e) => { const el = target(e); if (el) flag(el, Flag.Focused, false); });
-    this.root.addEventListener("pointermove", (e) => { this.pointer = [e.clientX, e.clientY]; }, { passive: true });
+    window.addEventListener("pointermove", (e) => {
+      this.movePointer(e);
+      const press = this.press;
+      if (!press) return;
+      this.requestFrame();
+      if (!press.dragging && Math.hypot(e.clientX - press.startX, e.clientY - press.startY) >= DRAG_THRESHOLD) {
+        press.dragging = true;
+        shot(press.el, Flag.DragStart);
+        flag(press.el, Flag.Dragging, true);
+      }
+      const state = entry(press.el);
+      if (press.dragging && state) {
+        state.dx += e.clientX - press.x;
+        state.dy += e.clientY - press.y;
+      }
+      press.x = e.clientX;
+      press.y = e.clientY;
+    }, { passive: true });
     this.root.addEventListener("input", (e) => {
       if (!e.target.classList?.contains("qui-input")) return;
       const field = e.target;
@@ -431,6 +501,8 @@ class Patcher {
       if (e.isComposing || e.keyCode === 229) return;
       const code = keyCode(e);
       if (code === undefined || code === Key.Tab) return;
+      const chord = [e.ctrlKey && "ctrl", e.shiftKey && "shift", e.altKey && "alt", e.metaKey && "meta", e.key.toLowerCase()].filter(Boolean).join("+");
+      if (this.preventKeys.has(chord)) e.preventDefault();
       const mods = (e.shiftKey ? Mod.Shift : 0) | (e.ctrlKey ? Mod.Ctrl : 0) | (e.altKey ? Mod.Alt : 0) | (e.metaKey ? Mod.Meta : 0);
       if (e.target.classList?.contains("qui-input")) {
         if (this.fieldKey(e.target, e, code, mods, shot)) return;
@@ -454,9 +526,17 @@ class Patcher {
       }
       return true;
     }
-    if (code === Key.Up || code === Key.Down) return Boolean(field.__multi);
+    if (code === Key.Up || code === Key.Down) {
+      if (!field.__multi) event.preventDefault();
+      return Boolean(field.__multi);
+    }
     if (ctrl) return fieldCtrlKeys.has(code);
     return code < Key.Left || fieldEditKeys.has(code);
+  }
+
+  movePointer(event) {
+    const origin = this.root.getBoundingClientRect();
+    this.pointer = [event.clientX - origin.left, event.clientY - origin.top];
   }
 
   autosize(field) {
@@ -529,10 +609,10 @@ class Patcher {
     }
   }
 
-  entryFor(node) {
+  entryFor(node, el) {
     let entry = this.entries.get(node.key);
     if (!entry) {
-      entry = { lo: node.lo, hi: node.hi, flags: 0, first: 0, count: 0 };
+      entry = { lo: node.lo, hi: node.hi, el, flags: 0, first: 0, count: 0, dx: 0, dy: 0 };
       this.entries.set(node.key, entry);
     }
     return entry;
@@ -551,16 +631,30 @@ class Patcher {
       if (node.role === Role.Image) el.setAttribute("role", "img");
       if (node.hit || node.kind === Kind.Button || node.kind === Kind.Input) el.setAttribute("data-qh", "");
       else el.removeAttribute("data-qh");
-      if (node.kind === Kind.Shader) el.__shader.update(node);
+      if (node.kind === Kind.Shader) this.patchShader(el, node);
       if (node.kind === Kind.Input) this.patchField(el, node);
     }
     if (node.focus && document.activeElement !== el && (node.focus === 2 || !el.__autofocused)) {
       el.__autofocused = true;
       el.focus();
     }
-    if (node.hit || node.kind === Kind.Button || node.kind === Kind.List || node.kind === Kind.Input) this.entryFor(node);
+    if (node.hit || node.kind === Kind.Button || node.kind === Kind.List || node.kind === Kind.Input) this.entryFor(node, el);
     if (node.kind === Kind.List) this.patchList(el, node);
     else this.reconcile(el, node, null, null);
+  }
+
+  patchShader(el, node) {
+    const view = el.__shader;
+    const before = view.src;
+    view.update(node);
+    if (view.src !== before) this.requestFrame();
+    if (!view.error) {
+      this.entries.delete(node.key);
+      return;
+    }
+    const entry = this.entryFor(node, el);
+    entry.error = view.error;
+    entry.flags |= Flag.ShaderError;
   }
 
   patchField(el, node) {
@@ -622,11 +716,13 @@ class Patcher {
   }
 
   apply(bytes, length) {
+    const began = performance.now();
     const { root, theme } = decode(bytes, length);
     this.setTheme(theme);
     root.dir = Dir.Stack;
     root.kind = Kind.Box;
     this.reconcile(this.root, root, null, null);
+    this.engineMs = performance.now() - began;
   }
 
   takeResults() {
@@ -637,8 +733,9 @@ class Patcher {
     const encoded = [];
     let textBytes = 0;
     for (const entry of this.entries.values()) {
-      if (entry.text === undefined) continue;
-      const bytes = encoder.encode(entry.text);
+      const text = entry.text ?? entry.error;
+      if (text === undefined) continue;
+      const bytes = encoder.encode(text);
       entry.first = textBytes;
       entry.count = bytes.length;
       entry.text = undefined;
@@ -668,6 +765,9 @@ class Patcher {
     view.setFloat32(20, (now - this.lastTime) / 1000, true);
     view.setFloat32(24, this.pointer[0], true);
     view.setFloat32(28, this.pointer[1], true);
+    view.setUint32(44, this.down ? 1 : 0, true);
+    view.setFloat32(48, this.engineMs, true);
+    const origin = this.root.getBoundingClientRect();
     this.lastTime = now;
     for (const entry of this.entries.values()) {
       let i = entry.lo & (capacity - 1);
@@ -678,6 +778,14 @@ class Patcher {
       view.setUint32(at + 8, entry.flags, true);
       view.setUint32(at + 12, entry.first, true);
       view.setUint32(at + 16, entry.count, true);
+      const rect = entry.el.getBoundingClientRect();
+      view.setFloat32(at + 24, rect.left - origin.left, true);
+      view.setFloat32(at + 28, rect.top - origin.top, true);
+      view.setFloat32(at + 32, rect.width, true);
+      view.setFloat32(at + 36, rect.height, true);
+      view.setFloat32(at + 40, entry.dx, true);
+      view.setFloat32(at + 44, entry.dy, true);
+      entry.dx = entry.dy = 0;
     }
     if (this.oneShots.length || hadKeys) {
       for (const [entry, bit] of this.oneShots) entry.flags &= ~bit;
@@ -689,7 +797,7 @@ class Patcher {
 }
 
 /* Loads a Go wasm app built with GOOS=js. wasm_exec.js must already be loaded. */
-export async function start({ wasm, root = document.body, sans = "system-ui, sans-serif", mono = "ui-monospace, monospace" }) {
+export async function start({ wasm, root = document.body, sans = "system-ui, sans-serif", mono = "ui-monospace, monospace", preventKeys = [] }) {
   const style = document.createElement("style");
   style.textContent = baseCss;
   document.head.append(style);
@@ -697,6 +805,7 @@ export async function start({ wasm, root = document.body, sans = "system-ui, san
   root.style.setProperty("--qui-mono", mono);
 
   const patcher = new Patcher(root);
+  patcher.preventKeys = new Set(preventKeys);
   let firstFrame;
   const ready = new Promise((resolve) => { firstFrame = resolve; });
   globalThis.__qui = {

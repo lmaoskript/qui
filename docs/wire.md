@@ -24,6 +24,7 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `Multiline` | `u8`, 1 for Enter inserting a newline, 2 for Enter submitting |
 | `Focus` | `u8`, 1 to focus on first appearance, 2 to focus now |
 | `Pos` | `x:f32 y:f32` |
+| `Z` | `i32`, paint and hit order among siblings; ties keep tree order |
 | `Bg`, `Fg` | `color:u32` |
 | `Border` | `color:u32 width:f32` |
 | `Clip`, `Scroll`, `Mono`, `Ellipsis`, `Password` | none |
@@ -40,14 +41,14 @@ clear, which would otherwise be an invisible color.
 The backend answers each frame with a table the app reads while building the
 next one, so widget calls never cross into the engine.
 
-The header is 48 bytes: `magic:u32 capacity:u32 width:f32 height:f32 dpr:f32
+The header is 64 bytes: `magic:u32 capacity:u32 width:f32 height:f32 dpr:f32
 dt:f32 pointer_x:f32 pointer_y:f32 keys_offset:u32 keys_count:u32
-text_offset:u32 reserved:u32`. It is followed by `capacity` slots of 48 bytes,
+text_offset:u32 pointer_down:u32 engine_ms:f32` and 12 reserved bytes. It is followed by `capacity` slots of 48 bytes,
 open-addressed with linear probing from `id & (capacity - 1)`. An empty slot has
 `id == 0`.
 
 After the slots come `keys_count` key events of `key:u32 mods:u32`, then the
-UTF-8 text of every edited `Input`.
+UTF-8 text of every edited `Input` and every failed `Shader`.
 
 | Offset | Field |
 | --- | --- |
@@ -61,7 +62,7 @@ UTF-8 text of every edited `Input`.
 
 `first` and `count` are the visible item range of a `List`. On an `Input` with
 `Changed` set they are the byte offset from `text_offset` and the length of its
-new value.
+new value, and on a `Shader` with `ShaderError` set the same for its compile log.
 
 ## Text fields
 

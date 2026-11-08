@@ -283,6 +283,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         break;
       case OpPassword: node.password = true; break;
       case OpFocus: node.focus_mode = in.read<uint8_t>(); break;
+      case OpZ: node.z = in.read<int32_t>(); break;
       case OpUniform: {
         UniformRef uniform;
         uniform.name = in.bytes(in.read<uint8_t>());
@@ -844,6 +845,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     return (c & 0xffffff00u) | std::min(a, 255u);
   };
 
+  int32_t own_scroll = -1;
   if (index != 0 && (node.hit || node.scroll || node.kind == KindList)) {
     HitEntry hit;
     hit.id = node.id;
@@ -858,7 +860,9 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     hit.press = node.hit != 0;
     hit.scroll = node.scroll || node.kind == KindList || (node.kind == KindInput && node.multiline);
     hit.focusable = node.kind == KindButton || node.kind == KindInput;
+    hit.scroll_parent = scroll_parent_;
     hits.push_back(hit);
+    if (hit.scroll) own_scroll = static_cast<int32_t>(hits.size()) - 1;
   }
 
   if (visible.empty() && index != 0) return;
@@ -907,8 +911,10 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
 
   IRect child_clip = clip;
   if (node.clip) child_clip = intersect(clip, bounds);
-  for (int32_t c = node.first_child; c >= 0; c = nodes[static_cast<size_t>(c)].next_sibling)
-    paint_node(c, alpha, child_clip);
+  const int32_t outer_scroll = scroll_parent_;
+  if (own_scroll >= 0) scroll_parent_ = own_scroll;
+  paint_children(node, alpha, child_clip);
+  scroll_parent_ = outer_scroll;
 
   const auto scrollbar = [&](float position, float fraction) {
     if (fraction >= 1) return;
@@ -941,7 +947,21 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
   }
 }
 
+void Engine::paint_children(const Node &node, float opacity, IRect clip) {
+  bool layered = false;
+  for (int32_t c = node.first_child; c >= 0; c = nodes[static_cast<size_t>(c)].next_sibling) layered |= nodes[static_cast<size_t>(c)].z != 0;
+  if (!layered) {
+    for (int32_t c = node.first_child; c >= 0; c = nodes[static_cast<size_t>(c)].next_sibling) paint_node(c, opacity, clip);
+    return;
+  }
+  std::vector<int32_t> order;
+  for (int32_t c = node.first_child; c >= 0; c = nodes[static_cast<size_t>(c)].next_sibling) order.push_back(c);
+  std::stable_sort(order.begin(), order.end(), [&](int32_t a, int32_t b) { return nodes[static_cast<size_t>(a)].z < nodes[static_cast<size_t>(b)].z; });
+  for (const int32_t c : order) paint_node(c, opacity, clip);
+}
+
 void Engine::paint() {
+  scroll_parent_ = -1;
   frame.instances.clear();
   frame.batches.clear();
   frame.shaders.clear();

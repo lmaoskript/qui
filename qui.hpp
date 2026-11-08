@@ -43,6 +43,7 @@ struct Style {
   uint8_t align = 0, justify = 0;
   bool absolute = false;
   float x = 0, y = 0;
+  int32_t z = 0;
   Color bg = 0, fg = 0, border = 0;
   float border_w = 0, radius = 0, opacity = 0;
   bool clip = false, scroll = false, hit = false;
@@ -71,6 +72,12 @@ struct Response {
   bool changed = false, submitted = false;
   float x = 0, y = 0, w = 0, h = 0, dx = 0, dy = 0;
   uint32_t first = 0, count = 0;
+  std::string_view error{};
+};
+
+struct Stats {
+  size_t nodes = 0, wire_bytes = 0;
+  float engine_ms = 0;
 };
 
 struct ListOptions {
@@ -110,11 +117,16 @@ class Ui {
   Ui &operator=(const Ui &) = delete;
 
   bool frame() {
-    if (started_) qui_frame_end(app_, buf_.data(), buf_.size());
+    if (started_) {
+      stats_.nodes = nodes_;
+      stats_.wire_bytes = buf_.size();
+      qui_frame_end(app_, buf_.data(), buf_.size());
+    }
     size_t len = 0;
     res_ = qui_frame_begin(app_, &len);
     if (!res_) return false;
     started_ = true;
+    nodes_ = 0;
     buf_.clear();
     stack_.clear();
     stack_.push_back({kSeed, 0});
@@ -132,6 +144,12 @@ class Ui {
   float dt() const { return header(20); }
   float pointer_x() const { return header(24); }
   float pointer_y() const { return header(28); }
+  bool pointer_down() const { return header_u32(44) != 0; }
+  Stats stats() const {
+    Stats out = stats_;
+    out.engine_ms = header(48);
+    return out;
+  }
 
   template <class F>
   Response column(const Style &style, F &&body) { return container(wire::DirColumn, style, body); }
@@ -180,6 +198,7 @@ class Ui {
     stack_.push_back({id, 0});
     for (uint32_t i = first; i < std::min(first + visible, count); ++i) {
       uint64_t item = hash_u32(id, i);
+      ++nodes_;
       u8(wire::OpOpen);
       u8(wire::KindBox);
       u64(item);
@@ -225,8 +244,10 @@ class Ui {
     return false;
   }
 
-  void shader(const ShaderOptions &options) {
-    open(wire::KindShader, options.style.key);
+  Response shader(const ShaderOptions &options) {
+    const uint64_t id = open(wire::KindShader, options.style.key);
+    Response result = lookup(id);
+    result.first = result.count = 0;
     emit_style(options.style);
     str(wire::OpSrc, options.src);
     if (options.fps) f32_op(wire::OpFps, options.fps);
@@ -238,6 +259,7 @@ class Ui {
       for (const float v : uniform.values) f32(v);
     }
     u8(wire::OpEnd);
+    return result;
   }
 
  private:
@@ -298,6 +320,7 @@ class Ui {
     Scope &scope = stack_.back();
     const uint64_t id = key.empty() ? hash_u32(scope.id, scope.index) : mix(scope.id, key.data(), key.size());
     ++scope.index;
+    ++nodes_;
     u8(wire::OpOpen);
     u8(kind);
     u64(id);
@@ -326,6 +349,7 @@ class Ui {
       f32(s.x);
       f32(s.y);
     }
+    if (s.z) u32_op(wire::OpZ, static_cast<uint32_t>(s.z));
     if (s.bg) u32_op(wire::OpBg, s.bg);
     if (s.fg) u32_op(wire::OpFg, s.fg);
     if (s.border) {
@@ -361,7 +385,7 @@ class Ui {
     std::memcpy(&capacity, res_ + 4, 4);
     if (!capacity) return out;
     for (uint32_t i = static_cast<uint32_t>(id) & (capacity - 1);; i = (i + 1) & (capacity - 1)) {
-      const uint8_t *slot = res_ + 48 + static_cast<size_t>(i) * 48;
+      const uint8_t *slot = res_ + 64 + static_cast<size_t>(i) * 48;
       uint64_t key = 0;
       std::memcpy(&key, slot, 8);
       if (key == 0) return out;
@@ -387,6 +411,7 @@ class Ui {
       out.drag_end = flags & wire::FlagDragEnd;
       out.changed = flags & wire::FlagChanged;
       out.submitted = flags & wire::FlagSubmitted;
+      if (flags & wire::FlagShaderError) out.error = std::string_view(reinterpret_cast<const char *>(res_) + header_u32(40) + out.first, out.count);
       return out;
     }
   }
@@ -395,6 +420,8 @@ class Ui {
   const uint8_t *res_ = nullptr;
   bool started_ = false;
   uint8_t theme_ = 0;
+  size_t nodes_ = 0;
+  Stats stats_{};
   std::vector<uint8_t> buf_;
   std::vector<Scope> stack_;
 };

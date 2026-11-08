@@ -38,6 +38,7 @@ type Style struct {
 	Align, Justify         Align
 	Absolute               bool
 	X, Y                   float32
+	Z                      int32
 	Bg, Fg, Border         Color
 	BorderW, Radius        float32
 	Opacity                float32
@@ -69,6 +70,15 @@ type Response struct {
 	Changed, Submitted                             bool
 	X, Y, W, H, DX, DY                             float32
 	First, Count                                   uint32
+	// Error holds the compile log of a failed Shader.
+	Error string
+}
+
+// Stats describes the last submitted frame.
+type Stats struct {
+	Nodes, WireBytes int
+	// EngineMs is the backend's cost for that frame, without waiting for vsync.
+	EngineMs float32
 }
 
 type ListOptions struct {
@@ -107,6 +117,8 @@ type Ui struct {
 	res     []byte
 	theme   Theme
 	started bool
+	nodes   int
+	stats   Stats
 }
 
 func newUi() *Ui {
@@ -117,6 +129,7 @@ func newUi() *Ui {
 // It returns false when the app should exit.
 func (u *Ui) Frame() bool {
 	if u.started {
+		u.stats.Nodes, u.stats.WireBytes = u.nodes, len(u.buf)
 		u.submit()
 	}
 	res := u.wait()
@@ -126,6 +139,7 @@ func (u *Ui) Frame() bool {
 	u.res = res
 	u.started = true
 	u.buf = u.buf[:0]
+	u.nodes = 0
 	u.stack = append(u.stack[:0], scope{hashSeed, 0})
 	u.u8(opFrame)
 	u.u8(wireVersion)
@@ -140,6 +154,18 @@ func (u *Ui) Dpr() float32      { return u.header(16) }
 func (u *Ui) Dt() float32       { return u.header(20) }
 func (u *Ui) PointerX() float32 { return u.header(24) }
 func (u *Ui) PointerY() float32 { return u.header(28) }
+
+// PointerDown reports whether the primary pointer button is held anywhere.
+func (u *Ui) PointerDown() bool {
+	return len(u.res) >= resultsHeader && binary.LittleEndian.Uint32(u.res[44:]) != 0
+}
+
+// Stats describes the last submitted frame.
+func (u *Ui) Stats() Stats {
+	stats := u.stats
+	stats.EngineMs = u.header(48)
+	return stats
+}
 
 func (u *Ui) Column(s Style, body func()) Response { return u.container(dirColumn, &s, body) }
 func (u *Ui) Row(s Style, body func()) Response    { return u.container(dirRow, &s, body) }
@@ -216,6 +242,7 @@ func (u *Ui) List(key string, count int, estimate float32, o ListOptions, row fu
 	u.stack = append(u.stack, scope{id, 0})
 	for i := first; i < min(first+visible, count); i++ {
 		item := mixU32(id, uint32(i))
+		u.nodes++
 		u.u8(opOpen)
 		u.u8(kindBox)
 		u.u64(item)
@@ -298,8 +325,12 @@ func (u *Ui) KeyPressed(key Key, mods ...Mods) bool {
 	return false
 }
 
-func (u *Ui) Shader(o ShaderOptions) {
-	u.open(kindShader, o.Style.Key)
+// Shader draws a GLSL fragment shader. A shader that fails to compile paints
+// its background and reports the compiler log in Response.Error.
+func (u *Ui) Shader(o ShaderOptions) Response {
+	id := u.open(kindShader, o.Style.Key)
+	result := u.lookup(id)
+	result.First, result.Count = 0, 0
 	u.emitStyle(&o.Style)
 	u.str(opSrc, o.Src)
 	if o.Fps != 0 {
@@ -316,6 +347,7 @@ func (u *Ui) Shader(o ShaderOptions) {
 		}
 	}
 	u.u8(opEnd)
+	return result
 }
 
 func mixString(h uint64, s string) uint64 {
@@ -388,6 +420,7 @@ func (u *Ui) open(kind uint8, key string) uint64 {
 		id = mixString(top.id, key)
 	}
 	top.index++
+	u.nodes++
 	u.u8(opOpen)
 	u.u8(kind)
 	u.u64(id)
@@ -429,6 +462,9 @@ func (u *Ui) emitStyle(s *Style) {
 		u.u8(opPos)
 		u.f32(s.X)
 		u.f32(s.Y)
+	}
+	if s.Z != 0 {
+		u.u32Op(opZ, uint32(s.Z))
 	}
 	if s.Bg != 0 {
 		u.u32Op(opBg, uint32(s.Bg))
@@ -482,7 +518,7 @@ func (u *Ui) container(dir uint8, s *Style, body func()) Response {
 }
 
 const (
-	resultsHeader = 48
+	resultsHeader = 64
 	resultsSlot   = 48
 )
 
@@ -524,6 +560,10 @@ func (u *Ui) lookup(id uint64) Response {
 		out.DragEnd = flags&flagDragEnd != 0
 		out.Changed = flags&flagChanged != 0
 		out.Submitted = flags&flagSubmitted != 0
+		if flags&flagShaderError != 0 {
+			start := binary.LittleEndian.Uint32(u.res[40:]) + out.First
+			out.Error = string(u.res[start : start+out.Count])
+		}
 		return out
 	}
 }

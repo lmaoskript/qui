@@ -22,6 +22,7 @@ namespace {
 using namespace qui;
 
 constexpr float kDragThreshold = 4;
+constexpr size_t kResultsHeader = 64, kResultsSlot = 48;
 constexpr float kWheelPixels = 48;
 constexpr double kCaretBlink = 0.53;
 
@@ -168,7 +169,8 @@ struct qui_app {
   float drag_dx = 0, drag_dy = 0;
   uint64_t hovered = 0, pressed = 0, focused = 0, clicked = 0, right_clicked = 0;
   uint64_t drag_start = 0, drag_end = 0;
-  bool dragging = false, focus_ring = false, selecting = false, caret_on = true, text_cursor = false;
+  bool dragging = false, focus_ring = false, selecting = false, caret_on = true, text_cursor = false, pointer_down = false;
+  float engine_ms = 0;
   std::vector<uint32_t> keys;
   std::string clipboard, text_blob;
   SDL_Rect last_ime_area{};
@@ -289,9 +291,10 @@ struct qui_app {
   uint64_t hit_test(float x, float y, bool scroll) const {
     const auto &hits = engine.hits;
     for (auto it = hits.rbegin(); it != hits.rend(); ++it) {
-      if (scroll ? !it->scroll : !it->press) continue;
-      if (x >= it->x && x < it->x + it->w && y >= it->y && y < it->y + it->h && x >= it->cx0 && x < it->cx1 && y >= it->cy0 && y < it->cy1)
-        return it->id;
+      if (!scroll && !it->press) continue;
+      if (x < it->x || x >= it->x + it->w || y < it->y || y >= it->y + it->h || x < it->cx0 || x >= it->cx1 || y < it->cy0 || y >= it->cy1) continue;
+      if (!scroll || it->scroll) return it->id;
+      return it->scroll_parent >= 0 ? hits[static_cast<size_t>(it->scroll_parent)].id : 0;
     }
     return 0;
   }
@@ -600,6 +603,7 @@ struct qui_app {
         to_logical(e.button.x, e.button.y, pointer_x, pointer_y);
         update_hover();
         if (e.button.button == SDL_BUTTON_LEFT) {
+          pointer_down = true;
           pressed = hovered;
           set_focus(hovered, false);
           press_x = pointer_x;
@@ -622,6 +626,7 @@ struct qui_app {
         update_hover();
         if (e.button.button == SDL_BUTTON_RIGHT && hovered) right_clicked = hovered;
         if (e.button.button == SDL_BUTTON_LEFT) {
+          pointer_down = false;
           if (dragging) drag_end = pressed;
           else if (pressed && pressed == hovered) clicked = pressed;
           pressed = 0;
@@ -727,6 +732,12 @@ struct qui_app {
       motion();
       button(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_RIGHT);
       button(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_RIGHT);
+    } else if (std::sscanf(step.c_str(), "down:%f,%f", &x, &y) == 2) {
+      motion();
+      button(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_LEFT);
+    } else if (std::sscanf(step.c_str(), "up:%f,%f", &x, &y) == 2) {
+      motion();
+      button(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_LEFT);
     } else if (std::sscanf(step.c_str(), "move:%f,%f", &x, &y) == 2) {
       motion();
     } else if (std::sscanf(step.c_str(), "wheel:%f,%f,%f", &x, &y, &amount) == 3) {
@@ -802,9 +813,8 @@ struct qui_app {
   }
 
   void put_slot(std::vector<uint8_t> &table, uint32_t capacity, uint64_t id, uint32_t flags, uint32_t first, uint32_t count, const float rect[4], bool has_rect) {
-    constexpr size_t kHeader = 48, kSlot = 48;
     for (uint32_t i = static_cast<uint32_t>(id) & (capacity - 1);; i = (i + 1) & (capacity - 1)) {
-      uint8_t *slot = table.data() + kHeader + i * kSlot;
+      uint8_t *slot = table.data() + kResultsHeader + i * kResultsSlot;
       uint64_t key = 0;
       std::memcpy(&key, slot, 8);
       if (key == 0 || key == id) {
@@ -818,7 +828,7 @@ struct qui_app {
           std::memcpy(slot + 16, &count, 4);
         }
         if (has_rect) std::memcpy(slot + 24, rect, 16);
-        if (id == pressed && dragging) {
+        if ((id == pressed && dragging) || id == drag_end) {
           std::memcpy(slot + 40, &drag_dx, 4);
           std::memcpy(slot + 44, &drag_dy, 4);
         }
@@ -829,7 +839,7 @@ struct qui_app {
 
   void fill_results() {
     constexpr uint32_t kMagic = 0x31495551u;
-    size_t needed = (engine.hits.size() + engine.lists.size()) * 2;
+    size_t needed = (engine.hits.size() + engine.lists.size() + engine.previous.shaders.size()) * 2;
     uint32_t capacity = 16;
     while (capacity < needed) capacity *= 2;
 
@@ -840,18 +850,20 @@ struct qui_app {
       if (state.submitted) edits = true;
     }
 
-    const size_t keys_at = 48 + static_cast<size_t>(capacity) * 48;
+    const size_t keys_at = kResultsHeader + static_cast<size_t>(capacity) * kResultsSlot;
     const size_t text_at = keys_at + keys.size() * 4;
     for (const auto &[id, state] : engine.inputs)
       if (state.changed) text_blob += state.text;
+    for (const ShaderDraw &draw : engine.previous.shaders) text_blob += backend->shader_error(draw.hash);
     results.assign(text_at + text_blob.size(), 0);
     uint8_t *p = results.data();
     const float header[] = {logical_w, logical_h, dpr, dt, pointer_x, pointer_y};
-    const uint32_t offsets[] = {static_cast<uint32_t>(keys_at), static_cast<uint32_t>(keys.size() / 2), static_cast<uint32_t>(text_at), 0};
+    const uint32_t offsets[] = {static_cast<uint32_t>(keys_at), static_cast<uint32_t>(keys.size() / 2), static_cast<uint32_t>(text_at), pointer_down ? 1u : 0u};
     std::memcpy(p, &kMagic, 4);
     std::memcpy(p + 4, &capacity, 4);
     std::memcpy(p + 8, header, sizeof(header));
     std::memcpy(p + 32, offsets, sizeof(offsets));
+    std::memcpy(p + 48, &engine_ms, 4);
     if (!keys.empty()) std::memcpy(p + keys_at, keys.data(), keys.size() * 4);
     if (!text_blob.empty()) std::memcpy(p + text_at, text_blob.data(), text_blob.size());
 
@@ -887,6 +899,12 @@ struct qui_app {
       }
       state.changed = state.submitted = false;
     }
+    for (const ShaderDraw &draw : engine.previous.shaders) {
+      const std::string_view error = backend->shader_error(draw.hash);
+      if (error.empty()) continue;
+      put_slot(results, capacity, draw.id, wire::FlagShaderError, blob_at, static_cast<uint32_t>(error.size()), nullptr, false);
+      blob_at += static_cast<uint32_t>(error.size());
+    }
     if (clicked || right_clicked || drag_start || drag_end || edits || !keys.empty()) dirty = true;
     clicked = right_clicked = drag_start = drag_end = 0;
     drag_dx = drag_dy = 0;
@@ -904,6 +922,7 @@ struct qui_app {
   }
 
   void end_frame(const uint8_t *wire, size_t len) {
+    const double began = now();
     if (!wire_path.empty()) last_wire.assign(wire, wire + len);
     if (window && !headless) read_size();
     engine.decode(wire, len);
@@ -926,11 +945,10 @@ struct qui_app {
       damage = full;
       force_full = false;
     }
-    if (!damage.empty()) {
-      const double time = headless ? 1.0 : now();
-      backend->draw(engine.previous, damage, time);
-      if (!headless) present(gl ? full : damage);
-    }
+    if (!damage.empty()) backend->draw(engine.previous, damage, headless ? 1.0 : now());
+    if (backend->take_compiled()) dirty = true;
+    engine_ms = static_cast<float>((now() - began) * 1000);
+    if (!damage.empty() && !headless) present(gl ? full : damage);
     if (animating()) next_tick = now() + tick_interval();
     if (engine.wants_another_frame) dirty = true;
     if (!headless) update_hover();

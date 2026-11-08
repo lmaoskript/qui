@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 2
+version 3
 
 kind Box 0
 kind Text 1
@@ -72,6 +72,7 @@ op Placeholder 35
 op Multiline 36
 op Password 37
 op Focus 38
+op Z 39
 
 key Backspace 8
 key Tab 9
@@ -115,6 +116,7 @@ flag Dragging 64
 flag DragEnd 128
 flag Changed 256
 flag Submitted 512
+flag ShaderError 1024
 
 token Background 1
 token Surface 2

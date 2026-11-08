@@ -79,14 +79,15 @@ A strict flexbox subset that maps directly to CSS.
 - `Align` is the cross axis (`Start Center End Stretch`), `Justify` the main axis (`Start Center End Between`).
 - Long text inside a `Row` needs `W: Fill()` to wrap instead of overflow.
 - `Scroll: true` scrolls vertically and needs a bounded height. Use `List` for long content.
+- `Z` sets paint and hit order among siblings. Use it to raise overlapping panels: unlike reordering children, it keeps their scroll position and focus on the web. Give overlapping panels `Hit: true` so the pointer and wheel stop at them.
 
-`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Bg Fg Border BorderW Radius Opacity Clip Scroll Hit Role Label Key`
+`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Clip Scroll Hit Role Label Key`
 
 `TextStyle` fields, in order: `Size Bold Mono Ellipsis Color W Align Role`. Presets: `Body H1 H2 Small Code`.
 
-`Response` fields: `Found Hovered Pressed Clicked RightClicked Focused DragStart Dragging DragEnd X Y W H DX DY First Count`
+`Response` fields: `Found Hovered Pressed Clicked RightClicked Focused DragStart Dragging DragEnd X Y W H DX DY First Count Error`
 
-Frame info: `Width Height Dpr Dt PointerX PointerY`.
+Frame info: `Width Height Dpr Dt PointerX PointerY PointerDown`. `Stats()` gives `Nodes WireBytes EngineMs` for the last frame.
 
 ## Color and semantics
 
@@ -186,7 +187,7 @@ func main() {
 }
 ```
 
-`Src` is GLSL ES 3.00 without `#version` or `precision`, and must define `vec4 shade(vec2 uv)`, with uv in 0..1 from the top-left. `u_time` and `u_resolution` are already declared; declare your own uniforms. `Fps` repaints without running your loop. The CPU backend does not run shaders and paints `Bg` instead, so always set one.
+`Src` is GLSL ES 3.00 without `#version` or `precision`, and must define `vec4 shade(vec2 uv)`, with uv in 0..1 from the top-left. `u_time` and `u_resolution` are already declared; declare your own uniforms. `Fps` repaints without running your loop. The CPU backend does not run shaders and paints `Bg` instead, so always set one. A shader that fails to compile also paints `Bg`, and `ui.Shader` returns the compiler log in `Response.Error`, with line numbers relative to `Src`.
 
 ## Build
 
@@ -202,7 +203,7 @@ Native needs `sdl3 freetype2 harfbuzz fontconfig` through pkg-config.
 <script src="wasm_exec.js"></script>
 <script type="module">
   import { start } from "./qui.js";
-  await start({ wasm: "app.wasm", root: document.body });
+  await start({ wasm: "app.wasm", root: document.body, preventKeys: ["ctrl+k"] });
 </script>
 ```
 
@@ -267,10 +268,10 @@ Any of the first three variables runs the app offscreen for a few frames and exi
 | `QUI_DPR=2` | Pixel ratio |
 | `QUI_BACKEND=cpu` or `gl` | Force a renderer |
 | `QUI_FRAMES=n` | Minimum frames before exiting |
-| `QUI_DRIVE='click:58,231;type:hello;key:ctrl+a'` | Scripted input, `;` separated, in logical pixels: `click:x,y`, `dblclick:x,y`, `rclick:x,y`, `drag:x0,y0,x1,y1`, `move:x,y`, `wheel:x,y,amount` (negative scrolls down), `type:text`, `key:shift+left`, `ime:text` |
+| `QUI_DRIVE='click:58,231;type:hello;key:ctrl+a'` | Scripted input, `;` separated, in logical pixels: `click:x,y`, `dblclick:x,y`, `rclick:x,y`, `drag:x0,y0,x1,y1`, `down:x,y`, `up:x,y`, `move:x,y`, `wheel:x,y,amount` (negative scrolls down), `type:text`, `key:shift+left`, `ime:text` |
 
 ## Not available yet
 
-Do not assume these exist: images, touch gestures, Android builds, Windows, right-to-left text editing, global shortcuts. On the web, `Response` has no drag flags or `X Y W H`, and list spacers use the estimate, so the scrollbar can shift when real heights differ.
+Do not assume these exist: images, touch gestures, Android builds, Windows, right-to-left text editing, global shortcuts. On the web, list spacers use the estimate, so the scrollbar can shift when real heights differ.
 
 To add a node kind, op or token, edit `spec.txt` and run `go run ./tools/gen`; `docs/wire.md` documents the format.

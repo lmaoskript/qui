@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <unordered_map>
 
 namespace qui {
@@ -179,6 +180,8 @@ const char *const kShaderFooter = R"(
 void main() { qui_out = shade(v_uv); }
 )";
 
+constexpr size_t kMaxPrograms = 32;
+
 class GlBackend final : public Backend {
  public:
   GlBackend(const Gl &gl, bool offscreen, bool es) : gl_(gl), offscreen_(offscreen), version_(es ? "#version 300 es\n" : "#version 330 core\n") {
@@ -265,6 +268,13 @@ class GlBackend final : public Backend {
     }
   }
 
+  std::string_view shader_error(uint64_t hash) const override {
+    const auto it = programs_.find(hash);
+    return it == programs_.end() ? std::string_view{} : std::string_view(it->second.error);
+  }
+
+  bool take_compiled() override { return std::exchange(compiled_, false); }
+
   void read_pixels(std::vector<uint32_t> &out) override {
     out.resize(static_cast<size_t>(width_) * static_cast<size_t>(height_));
     gl_.BindFramebuffer(GL_FRAMEBUFFER, offscreen_ ? fbo_ : 0);
@@ -283,6 +293,8 @@ class GlBackend final : public Backend {
   struct Program {
     GLuint id = 0;
     GLint rect = -1, fb = -1, time = -1, resolution = -1;
+    uint64_t used = 0;
+    std::string error;
     std::unordered_map<std::string, std::pair<GLint, GLenum>> uniforms;
   };
 
@@ -294,7 +306,7 @@ class GlBackend final : public Backend {
     gl_.BlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
   }
 
-  GLuint compile(GLenum type, const std::string &source, const char *name) {
+  GLuint compile(GLenum type, const std::string &source, const char *name, std::string *error) {
     const GLuint shader = gl_.CreateShader(type);
     const char *text = source.c_str();
     gl_.ShaderSource(shader, 1, &text, nullptr);
@@ -305,15 +317,16 @@ class GlBackend final : public Backend {
       char log[2048] = {};
       gl_.GetShaderInfoLog(shader, sizeof(log), nullptr, log);
       std::fprintf(stderr, "qui: shader '%s' failed to compile, drawing its background instead:\n%s\n", name, log);
+      if (error) *error = log;
       gl_.DeleteShader(shader);
       return 0;
     }
     return shader;
   }
 
-  GLuint link(const char *vertex, const char *fragment, const char *name) {
-    const GLuint vs = compile(GL_VERTEX_SHADER, version_ + vertex, name);
-    const GLuint fs = compile(GL_FRAGMENT_SHADER, version_ + fragment, name);
+  GLuint link(const char *vertex, const char *fragment, const char *name, std::string *error = nullptr) {
+    const GLuint vs = compile(GL_VERTEX_SHADER, version_ + vertex, name, error);
+    const GLuint fs = compile(GL_FRAGMENT_SHADER, version_ + fragment, name, error);
     if (!vs || !fs) {
       if (vs) gl_.DeleteShader(vs);
       if (fs) gl_.DeleteShader(fs);
@@ -331,6 +344,7 @@ class GlBackend final : public Backend {
       char log[2048] = {};
       gl_.GetProgramInfoLog(program, sizeof(log), nullptr, log);
       std::fprintf(stderr, "qui: shader '%s' failed to link: %s\n", name, log);
+      if (error) *error = log;
       gl_.DeleteProgram(program);
       return 0;
     }
@@ -340,9 +354,18 @@ class GlBackend final : public Backend {
   Program &program_for(const ShaderDraw &draw) {
     auto [it, inserted] = programs_.try_emplace(draw.hash);
     Program &program = it->second;
+    program.used = ++use_clock_;
     if (!inserted) return program;
-    const std::string fragment = std::string(kShaderHeader) + draw.src + kShaderFooter;
-    program.id = link(kShaderVertex, fragment.c_str(), "custom");
+    compiled_ = true;
+    if (programs_.size() > kMaxPrograms) {
+      auto oldest = programs_.begin();
+      for (auto i = programs_.begin(); i != programs_.end(); ++i)
+        if (i->second.used < oldest->second.used) oldest = i;
+      if (oldest->second.id) gl_.DeleteProgram(oldest->second.id);
+      programs_.erase(oldest);
+    }
+    const std::string fragment = std::string(kShaderHeader) + "#line 1\n" + draw.src + kShaderFooter;
+    program.id = link(kShaderVertex, fragment.c_str(), "custom", &program.error);
     if (!program.id) return program;
     program.rect = gl_.GetUniformLocation(program.id, "qui_rect");
     program.fb = gl_.GetUniformLocation(program.id, "qui_fb");
@@ -396,6 +419,8 @@ class GlBackend final : public Backend {
   int width_ = 0, height_ = 0;
   std::vector<GLuint> pages_;
   std::unordered_map<uint64_t, Program> programs_;
+  uint64_t use_clock_ = 0;
+  bool compiled_ = false;
 };
 
 }  // namespace
