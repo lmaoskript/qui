@@ -210,7 +210,8 @@ function css(node, parent) {
     s += wMode === Size.Fill ? `flex:${node.wVal} 1 0;` : wMode === Size.Fit ? "flex:0 1 auto;" : "flex:0 0 auto;";
     if (hMode === Size.Fill) s += "align-self:stretch;";
   } else if (column) {
-    s += hMode === Size.Fill ? `flex:${node.hVal} 1 0;` : hMode === Size.Fit ? "flex:0 0 auto;" : "flex:0 0 auto;";
+    const stretches = hMode === Size.Fill && (parent.hMode ?? Size.Fit) !== Size.Fit && !parent.scroll;
+    s += stretches ? `flex:${node.hVal} 1 0;` : "flex:0 0 auto;";
     if (wMode === Size.Fill) s += "align-self:stretch;";
   } else if (parent.kind === Kind.List) {
     s += "width:100%;";
@@ -261,6 +262,7 @@ function css(node, parent) {
     if (node.mono) s += "font-family:var(--qui-mono);";
     if (node.tracking) s += `letter-spacing:${node.tracking}px;`;
     if (node.ellipsis) s += "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    if (node.kind === Kind.Button && node.justify) s += `justify-content:${flexAlign[node.justify]};`;
     if (node.kind === Kind.Text && node.justify) s += `text-align:${node.justify === Align.Center ? "center" : node.justify === Align.End ? "right" : "left"};`;
   }
   return s;

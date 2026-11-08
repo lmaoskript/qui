@@ -78,6 +78,7 @@ A strict flexbox subset that maps directly to CSS.
 - Padding: Go `All(n)`, `XY(x, y)`, `Edges{Top, Right, Bottom, Left}`; C++ `16`, `{v, h}`, `{t, r, b, l}`.
 - `Align` is the cross axis (`Start Center End Stretch`), `Justify` the main axis (`Start Center End Between`).
 - Long text inside a `Row` needs `W: Fill()` to wrap instead of overflow.
+- Button labels are centered. `Justify: Between` left-aligns one, `Justify: End` right-aligns it.
 - `Scroll: true` scrolls vertically and needs a bounded height. Use `List` for long content.
 - `Z` sets paint and hit order among siblings. Use it to raise overlapping panels: unlike reordering children, it keeps their scroll position and focus on the web. Give overlapping panels `Hit: true` so the pointer and wheel stop at them.
 
