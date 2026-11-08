@@ -20,8 +20,8 @@ const baseCss = `
 .qui-btn:focus-visible { outline: 2px solid var(--qui-Accent); outline-offset: 1px; }
 .qui-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .qui-list { overflow-y: auto; display: block; }
-.qui-root ::-webkit-scrollbar { width: 8px; }
-.qui-root ::-webkit-scrollbar-thumb { background: var(--qui-Scrollbar); border-radius: 4px; }
+.qui-root, .qui-root * { scrollbar-width: thin; scrollbar-color: var(--qui-Scrollbar) transparent; }
+.qui-root canvas { display: block; }
 `;
 
 class Reader {
