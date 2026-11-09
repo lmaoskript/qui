@@ -221,6 +221,22 @@ if r.Clicked == "docs" { open() }
 
 One paragraph that wraps across spans. Offsets are UTF-8 byte offsets; spans are sorted and must not overlap, and gaps are plain text. Flags: `SpanBold SpanMono SpanItalic SpanUnderline SpanStrike` (italic is accepted but not drawn yet). `Link` makes a span clickable and `Hovered`, `Clicked` and `RightClicked` name it, one frame late like any response. C++: `ui.rich(text, spans, style)` with `Span{.start, .end, .flags, .fg, .bg, .link}`. On the web it is real `<span>` and `<a>` elements.
 
+## Overlays
+
+Call these from the root container, after the content they cover. `Modal` and `Popup` return true when the user clicked outside or pressed Escape, so you can close them.
+
+```go
+if modal && ui.Modal("settings", qui.Style{W: qui.Px(420), Bg: qui.Surface, Radius: 10, Pad: qui.All(16)}, body) {
+	modal = false
+}
+if menu && ui.Popup("ctx", x, y, qui.Style{W: qui.Px(180), Bg: qui.Raised, Radius: 8}, items) {
+	menu = false
+}
+ui.Tooltip(row.Hovered, "Copy link")
+```
+
+`Modal` centers a panel over a scrim, `Popup` places a panel at window coordinates (take them from `PointerX/PointerY` on a right click) and keeps it on screen when it has a `W`, and `Tooltip` follows the pointer. C++: `ui.modal(key, style, body)`, `ui.popup(key, x, y, style, body)`, `ui.tooltip(show, text)`.
+
 ## Gestures
 
 Touch taps, scrolling and flings work without any setup. For the rest, set `Gestures` on a box. It does not need `Hit`, and text under it stays selectable.

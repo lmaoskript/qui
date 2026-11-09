@@ -83,6 +83,8 @@ struct TextStyle {
   float tracking = 0;
 };
 
+inline constexpr int32_t kOverlayZ = 1 << 20;
+
 inline constexpr TextStyle Body{};
 inline constexpr TextStyle H1{.size = 24, .bold = true, .color = Strong, .role = RoleHeading};
 inline constexpr TextStyle H2{.size = 18, .bold = true, .color = Strong, .role = RoleHeading};
@@ -322,6 +324,59 @@ class Ui {
     emit_style(style);
     u8(wire::OpEnd);
     return lookup(id);
+  }
+
+  // Overlays float above the window. Call them from the root container, after the
+  // content they cover. modal and popup return true when the user clicked outside
+  // or pressed Escape, the cue to close them.
+  template <class F>
+  bool modal(std::string_view key, Style panel, F &&body) {
+    bool dismissed = false;
+    const std::string scrim_key = std::string(key) + "/scrim", panel_key = std::string(key) + "/panel";
+    stack({.w = fill(), .h = fill(), .align = Center, .justify = Center, .absolute = true, .z = kOverlayZ, .key = key}, [&] {
+      const Response scrim = column({.w = fill(), .h = fill(), .absolute = true, .bg = Scrim, .hit = true, .key = scrim_key}, [] {});
+      if (scrim.clicked) dismissed = true;
+      panel.hit = true;
+      if (panel.key.empty()) panel.key = panel_key;
+      column(panel, body);
+    });
+    return dismissed || key_pressed(KeyEscape);
+  }
+
+  template <class F>
+  bool popup(std::string_view key, float x, float y, Style panel, F &&body) {
+    bool dismissed = false;
+    const std::string catcher_key = std::string(key) + "/catcher", panel_key = std::string(key) + "/panel";
+    if (panel.w.mode == wire::SizePx && x + panel.w.value > width()) x -= x + panel.w.value - width() + 8;
+    if (x < 0) x = 0;
+    stack({.w = fill(), .h = fill(), .absolute = true, .z = kOverlayZ, .key = key}, [&] {
+      const Response catcher = column({.w = fill(), .h = fill(), .absolute = true, .hit = true, .key = catcher_key}, [] {});
+      if (catcher.clicked || catcher.right_clicked) dismissed = true;
+      panel.absolute = true;
+      panel.x = x;
+      panel.y = y;
+      panel.hit = true;
+      if (panel.key.empty()) panel.key = panel_key;
+      column(panel, body);
+    });
+    return dismissed || key_pressed(KeyEscape);
+  }
+
+  // Shows `text` beside the pointer while `show` is true, usually a response's hovered.
+  void tooltip(bool show, std::string_view text, Style style = {}) {
+    if (!show || text.empty()) return;
+    style.absolute = true;
+    style.x = pointer_x() + 12;
+    style.y = pointer_y() + 16;
+    style.z = kOverlayZ + 1;
+    if (style.x + 200 > width()) style.x = pointer_x() - 212;
+    if (!style.bg) style.bg = Raised;
+    if (!style.border) style.border = Line;
+    if (!style.radius) style.radius = 6;
+    if (!style.pad.top && !style.pad.right && !style.pad.bottom && !style.pad.left) style.pad = {4, 8};
+    style.max_w = 280;
+    style.key = "qui/tooltip";
+    column(style, [&] { text_impl(text, {}, {.size = 12, .color = Ink}); });
   }
 
   Response button(std::string_view label, Style style = {}) {
