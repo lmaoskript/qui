@@ -106,6 +106,7 @@ struct Response {
 };
 
 inline constexpr uint8_t FitCover = wire::FitCover, FitContain = wire::FitContain, FitStretch = wire::FitStretch;
+inline constexpr uint8_t SpanImage = wire::SpanImage;
 inline constexpr uint8_t SpanBold = wire::SpanBold, SpanMono = wire::SpanMono, SpanItalic = wire::SpanItalic, SpanUnderline = wire::SpanUnderline, SpanStrike = wire::SpanStrike;
 
 struct Span {
@@ -113,7 +114,12 @@ struct Span {
   uint8_t flags = 0;
   Color fg = 0, bg = 0;
   std::string_view link{};
+  // Key of a loaded image drawn in place of the span, whose bytes must be
+  // kImagePlaceholder.
+  std::string_view image{};
 };
+
+inline constexpr std::string_view kImagePlaceholder = "\xe2\x80\x83\xe2\x80\x82";
 
 struct RichResult {
   std::string_view hovered{}, clicked{}, right_clicked{};
@@ -290,10 +296,11 @@ class Ui {
       u8(wire::OpSpan);
       u32(s.start);
       u32(s.end);
-      u8(s.flags);
+      u8(s.image.empty() ? s.flags : s.flags | wire::SpanImage);
       u32(s.fg);
       u32(s.bg);
       u64(span_id);
+      u64(s.image.empty() ? 0 : mix(0, s.image.data(), s.image.size()));
     }
     if (style.size) f32_op(wire::OpFontSize, style.size);
     if (style.bold) u8_op(wire::OpWeight, 1);

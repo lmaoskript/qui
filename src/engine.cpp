@@ -359,6 +359,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         span.fg = fg ? resolve(fg) : 0;
         span.bg = bg ? resolve(bg) : 0;
         span.id = in.read<uint64_t>();
+        span.image = in.read<uint64_t>();
         if (!node.span_count) node.span_first = static_cast<uint32_t>(spans.size());
         ++node.span_count;
         spans.push_back(span);
@@ -1018,8 +1019,20 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
       for (uint32_t k = 0; k < node.span_count; ++k) {
         const SpanRef &span = spans[node.span_first + k];
         float lo, hi;
-        if (!(span.flags & (SpanUnderline | SpanStrike)) && !span.id) continue;
+        if (!(span.flags & (SpanUnderline | SpanStrike | SpanImage)) && !span.id) continue;
         if (!extent(span, lo, hi)) continue;
+        if (span.flags & SpanImage) {
+          const int size = static_cast<int>(std::round(line_height * 0.92f));
+          const ImageRegion &region = image_region_for(span.image, FitContain, size, size);
+          if (region.ok) {
+            const float page_w = static_cast<float>(fonts.page_width(region.region.page)), page_h = static_cast<float>(fonts.page_height(region.region.page));
+            const auto tint = std::min(255u, static_cast<uint32_t>(opacity * 255.f + 0.5f));
+            const Instance instance{std::round(lo + (hi - lo - static_cast<float>(region.w)) / 2), std::round(y + (line_height - static_cast<float>(region.h)) / 2), static_cast<float>(region.w), static_cast<float>(region.h),
+                                    std::round(region.region.u0 * page_w), std::round(region.region.v0 * page_h), 0, 0, 0x00ffffffu | (tint << 24), InstColorGlyph};
+            add_instance(instance, static_cast<int>(region.region.page), clip);
+          }
+          continue;
+        }
         const uint32_t line_color = span.fg ? faded(span.fg) : color;
         if (span.flags & SpanUnderline) add_rect(lo, std::round(y + (line_height - ink) / 2 + metrics->ascender + dpr), hi - lo, thickness, line_color, 0, 0, clip);
         if (span.flags & SpanStrike) add_rect(lo, std::round(y + line_height * 0.52f), hi - lo, thickness, line_color, 0, 0, clip);
@@ -1393,27 +1406,31 @@ void resample(const std::vector<uint8_t> &src, uint32_t sw, uint32_t sh, CropRec
 }  // namespace
 
 const Engine::ImageRegion &Engine::image_region(const Node &node, int box_w, int box_h) {
+  return image_region_for(node.image, node.fit, box_w, box_h);
+}
+
+const Engine::ImageRegion &Engine::image_region_for(uint64_t key, uint8_t fit, int box_w, int box_h) {
   static const ImageRegion none;
-  const auto source = images.find(node.image);
+  const auto source = images.find(key);
   if (source == images.end() || box_w <= 0 || box_h <= 0) return none;
   const ImageSource &img = source->second;
-  const uint64_t cache_key = (node.image * 1099511628211ull) ^ (static_cast<uint64_t>(box_w) << 40) ^ (static_cast<uint64_t>(box_h) << 20) ^ node.fit;
-  if (const auto hit = image_regions.find(cache_key); hit != image_regions.end() && hit->second.source == node.image) return hit->second;
+  const uint64_t cache_key = (key * 1099511628211ull) ^ (static_cast<uint64_t>(box_w) << 40) ^ (static_cast<uint64_t>(box_h) << 20) ^ fit;
+  if (const auto hit = image_regions.find(cache_key); hit != image_regions.end() && hit->second.source == key) return hit->second;
 
   const float sw = static_cast<float>(img.w), sh = static_cast<float>(img.h);
   CropRect crop{0, 0, sw, sh};
   int dw = box_w, dh = box_h;
-  if (node.fit == FitContain) {
+  if (fit == FitContain) {
     const float scale = std::min(static_cast<float>(box_w) / sw, static_cast<float>(box_h) / sh);
     dw = std::max(1, static_cast<int>(std::round(sw * scale)));
     dh = std::max(1, static_cast<int>(std::round(sh * scale)));
-  } else if (node.fit == FitCover) {
+  } else if (fit == FitCover) {
     const float scale = std::max(static_cast<float>(box_w) / sw, static_cast<float>(box_h) / sh);
     const float view_w = static_cast<float>(box_w) / scale, view_h = static_cast<float>(box_h) / scale;
     crop = {(sw - view_w) / 2, (sh - view_h) / 2, (sw + view_w) / 2, (sh + view_h) / 2};
   }
   ImageRegion region;
-  region.source = node.image;
+  region.source = key;
   region.w = dw;
   region.h = dh;
   std::vector<uint8_t> pixels;

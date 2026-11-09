@@ -171,7 +171,7 @@ function decode(bytes, length) {
       case Op.Role: node.role = r.u8(); break;
       case Op.Label: node.label = r.str(); break;
       case Op.Text: { const n = r.u32(); node.textBuf = r.bytes; node.textAt = r.at; node.textLen = n; node.text = decoder.decode(r.bytes.subarray(r.at, r.at + n)); r.at += n; break; }
-      case Op.Span: { const span = { start: r.u32(), end: r.u32(), flags: r.u8(), fg: r.u32(), bg: r.u32() }; const lo = r.u32(), hi = r.u32(); span.lo = lo; span.hi = hi; span.key = (hi & 0x1fffff) * 4294967296 + lo; (node.spans ??= []).push(span); break; }
+      case Op.Span: { const span = { start: r.u32(), end: r.u32(), flags: r.u8(), fg: r.u32(), bg: r.u32() }; const lo = r.u32(), hi = r.u32(); span.lo = lo; span.hi = hi; span.key = (hi & 0x1fffff) * 4294967296 + lo; { const ilo = r.u32(), ihi = r.u32(); if (span.flags & 32) span.image = `${ihi}:${ilo}`; } (node.spans ??= []).push(span); break; }
       case Op.FontSize: node.fontSize = r.f32(); break;
       case Op.Weight: node.weight = r.u8(); break;
       case Op.Mono: node.mono = true; break;
@@ -889,6 +889,18 @@ class Patcher {
     let at = 0;
     const add = (text, span) => {
       if (!text) return;
+      if (span?.image) {
+        const image = this.images.get(span.image);
+        const canvas = document.createElement("canvas");
+        if (image) {
+          canvas.width = image.w;
+          canvas.height = image.h;
+          canvas.getContext("2d").putImageData(new ImageData(image.data, image.w, image.h), 0, 0);
+        }
+        canvas.style.cssText = "height:1.3em;width:auto;vertical-align:-0.3em;margin:0 0.05em;";
+        el.appendChild(canvas);
+        return;
+      }
       if (!span) {
         el.appendChild(document.createTextNode(text));
         return;

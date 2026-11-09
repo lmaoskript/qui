@@ -6,7 +6,7 @@ namespace qui {
 
 namespace wire {
 
-inline constexpr uint8_t kVersion = 9;
+inline constexpr uint8_t kVersion = 10;
 inline constexpr int kThemeCount = 4;
 inline constexpr int kTokenCount = 19;
 
@@ -99,6 +99,7 @@ enum SpanFlag : uint8_t {
   SpanItalic = 4,
   SpanUnderline = 8,
   SpanStrike = 16,
+  SpanImage = 32,
 };
 
 enum Flag : uint32_t {

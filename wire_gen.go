@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 9
+const wireVersion = 10
 
 const (
 	opEnd         = 0
@@ -111,6 +111,7 @@ const (
 	SpanItalic    SpanFlags = 4
 	SpanUnderline SpanFlags = 8
 	SpanStrike    SpanFlags = 16
+	SpanImage     SpanFlags = 32
 )
 
 const (

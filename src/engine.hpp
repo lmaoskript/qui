@@ -274,7 +274,7 @@ class Engine {
     uint32_t start = 0, end = 0;
     uint8_t flags = 0;
     uint32_t fg = 0, bg = 0;
-    uint64_t id = 0;
+    uint64_t id = 0, image = 0;
   };
   std::vector<SpanRef> spans;
   std::vector<TextStyleSpan> span_scratch;
@@ -291,6 +291,7 @@ class Engine {
   std::unordered_map<uint64_t, ImageSource> images;
   std::unordered_map<uint64_t, ImageRegion> image_regions;
   const ImageRegion &image_region(const Node &node, int box_w, int box_h);
+  const ImageRegion &image_region_for(uint64_t key, uint8_t fit, int box_w, int box_h);
   void paint_image(const Node &node, float x0, float y0, float w, float h, float alpha, float radius, IRect clip);
   std::array<uint32_t, 256> palette{};
   std::bitset<256> palette_set;

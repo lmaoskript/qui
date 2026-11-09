@@ -250,7 +250,14 @@ type Span struct {
 	Flags      SpanFlags
 	Fg, Bg     Color
 	Link       string
+	// Image is the key of a loaded image drawn in place of the span. The span's
+	// bytes must be ImagePlaceholder, which reserves its width.
+	Image string
 }
+
+// ImagePlaceholder is the text to give a Span with an Image: a fixed-width gap
+// about as wide as a custom emoji.
+const ImagePlaceholder = "\u2003\u2002"
 
 type linkSpan struct {
 	name string
@@ -297,13 +304,20 @@ func (u *Ui) emitSpans(node uint64, value string, spans []Span) []linkSpan {
 			id = mixString(node, "link:"+s.Link)
 			links = append(links, linkSpan{s.Link, id})
 		}
+		flags := s.Flags
+		var image uint64
+		if s.Image != "" {
+			flags |= SpanImage
+			image = mixString(0, s.Image)
+		}
 		u.u8(opSpan)
 		u.u32(uint32(s.Start))
 		u.u32(uint32(s.End))
-		u.u8(uint8(s.Flags))
+		u.u8(uint8(flags))
 		u.u32(uint32(s.Fg))
 		u.u32(uint32(s.Bg))
 		u.u64(id)
+		u.u64(image)
 	}
 	return links
 }
