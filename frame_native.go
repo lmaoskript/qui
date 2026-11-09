@@ -4,19 +4,18 @@ package qui
 
 /*
 #cgo CXXFLAGS: -std=c++20
-#cgo pkg-config: sdl3 freetype2 harfbuzz fontconfig
-#cgo LDFLAGS: -lstdc++ -lm
+#cgo linux,!android pkg-config: sdl3 freetype2 harfbuzz fontconfig
+#cgo linux,!android LDFLAGS: -lstdc++ -lm
+#cgo windows pkg-config: --static sdl3 freetype2 harfbuzz
+#cgo windows LDFLAGS: -static
+#cgo android pkg-config: --static sdl3 freetype2 harfbuzz
+#cgo android LDFLAGS: -static-libstdc++ -llog -landroid
 #include <stdlib.h>
 #include "qui_c.h"
 */
 import "C"
 
-import (
-	"runtime"
-	"unsafe"
-)
-
-func init() { runtime.LockOSThread() }
+import "unsafe"
 
 type platform struct {
 	app *C.qui_app

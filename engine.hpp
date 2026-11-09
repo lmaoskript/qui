@@ -1,6 +1,7 @@
 #pragma once
 
 #include "font_manager.hpp"
+#include "system_fonts.hpp"
 #include "text_shaper.hpp"
 #include "wire.gen.hpp"
 
@@ -267,7 +268,7 @@ class Engine {
   std::string tree_json() const;
 
  private:
-  std::string sans_regular_, sans_bold_, mono_regular_, mono_bold_;
+  SystemFont sans_regular_, sans_bold_, mono_regular_, mono_bold_;
   std::unordered_map<uint64_t, FontInstanceId> font_cache_;
   int32_t scroll_parent_ = -1;
   std::vector<float> visual_;

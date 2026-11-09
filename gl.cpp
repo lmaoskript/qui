@@ -2,8 +2,7 @@
 
 #include "engine.hpp"
 
-#define GL_GLES_PROTOTYPES 0
-#include <GLES3/gl3.h>
+#include "gl_api.hpp"
 
 #include <algorithm>
 #include <cstdio>

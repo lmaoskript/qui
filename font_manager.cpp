@@ -1,13 +1,14 @@
 //go:build cgo
 
 #include "font_manager.hpp"
+#include "system_fonts.hpp"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
 #include FT_OUTLINE_H
+#include FT_MULTIPLE_MASTERS_H
 #include <hb-ft.h>
-#include <fontconfig/fontconfig.h>
 
 #include <algorithm>
 #include <cmath>
@@ -36,6 +37,7 @@ struct FontManager::FontInstance {
   FT_Face face = nullptr;
   hb_font_t *hb = nullptr;
   float pixel_size = 0.0f;
+  float weight = 0.0f;
   float raster_scale = 1.0f;
   int face_index = 0;
   bool ligatures_enabled = true;
@@ -53,8 +55,7 @@ struct FontManager::FontInstance {
 };
 
 FontManager::FontManager() {
-  if (!FcInit())
-    std::fprintf(stderr, "font: Fontconfig initialization failed\n");
+  init_system_fonts();
   if (FT_Init_FreeType(&library_) != 0) {
     std::fprintf(stderr, "font: FT_Init_FreeType failed\n");
     library_ = nullptr;
@@ -77,13 +78,14 @@ FontInstanceId FontManager::load_font(const std::string &path, float pixel_size,
 FontInstanceId FontManager::load_font_face(const std::string &path,
                                            int face_index, float pixel_size,
                                            bool ligatures_enabled,
-                                           bool subpixel) {
+                                           bool subpixel, float weight) {
   if (!library_ || pixel_size <= 0.0f)
     return 0;
 
   for (const auto &font : fonts_) {
     if (font && font->path == path && font->face_index == face_index &&
-        font->pixel_size == pixel_size && font->subpixel == subpixel)
+        font->pixel_size == pixel_size && font->subpixel == subpixel &&
+        font->weight == weight)
       return font->id;
   }
 
@@ -91,6 +93,18 @@ FontInstanceId FontManager::load_font_face(const std::string &path,
   if (FT_New_Face(library_, path.c_str(), face_index, &instance->face) != 0) {
     std::fprintf(stderr, "font: failed to load '%s'\n", path.c_str());
     return 0;
+  }
+  FT_MM_Var *axes = nullptr;
+  if (weight > 0.0f && FT_HAS_MULTIPLE_MASTERS(instance->face) &&
+      FT_Get_MM_Var(instance->face, &axes) == 0) {
+    std::vector<FT_Fixed> coords(axes->num_axis);
+    for (FT_UInt axis = 0; axis < axes->num_axis; ++axis) {
+      const bool is_weight = axes->axis[axis].tag == FT_MAKE_TAG('w', 'g', 'h', 't');
+      coords[axis] = is_weight ? std::clamp(static_cast<FT_Fixed>(weight * 65536.0f), axes->axis[axis].minimum, axes->axis[axis].maximum)
+                               : axes->axis[axis].def;
+    }
+    FT_Set_Var_Design_Coordinates(instance->face, axes->num_axis, coords.data());
+    FT_Done_MM_Var(library_, axes);
   }
   if (FT_Set_Pixel_Sizes(instance->face, 0,
                          static_cast<FT_UInt>(pixel_size + 0.5f)) != 0) {
@@ -133,6 +147,7 @@ FontInstanceId FontManager::load_font_face(const std::string &path,
   instance->path = path;
   instance->face_index = face_index;
   instance->pixel_size = pixel_size;
+  instance->weight = weight;
   instance->ligatures_enabled = ligatures_enabled;
   instance->metrics.ascender =
       instance->face->size->metrics.ascender / 64.0f * instance->raster_scale;
@@ -211,52 +226,18 @@ FontInstanceId FontManager::font_for_codepoint(FontInstanceId preferred,
   const float pixel_size = fonts_[preferred - 1]->pixel_size;
   const bool ligatures_enabled = fonts_[preferred - 1]->ligatures_enabled;
   const bool subpixel_text = fonts_[preferred - 1]->subpixel;
-  auto match_family = [&](const char *family) -> FontInstanceId {
-    FontInstanceId match_font = 0;
-    FcPattern *pattern = FcPatternCreate();
-    FcCharSet *charset = FcCharSetCreate();
-    if (!pattern || !charset ||
-        !FcCharSetAddChar(charset, static_cast<FcChar32>(codepoint))) {
-      if (charset)
-        FcCharSetDestroy(charset);
-      if (pattern)
-        FcPatternDestroy(pattern);
-      return 0;
+  FontInstanceId result = 0;
+  for (const SystemFont &font : fallback_fonts(codepoint, emoji_presentation(codepoint))) {
+    if (font.path.empty())
+      continue;
+    const FontInstanceId candidate =
+        load_font_face(font.path, font.index, pixel_size, ligatures_enabled,
+                       subpixel_text, font.weight);
+    if (candidate && has_codepoint(candidate, codepoint)) {
+      result = candidate;
+      break;
     }
-    FcPatternAddString(pattern, FC_FAMILY,
-                       reinterpret_cast<const FcChar8 *>(family));
-    FcPatternAddCharSet(pattern, FC_CHARSET, charset);
-    FcConfigSubstitute(nullptr, pattern, FcMatchPattern);
-    FcDefaultSubstitute(pattern);
-    FcResult match_result = FcResultNoMatch;
-    FcPattern *match = FcFontMatch(nullptr, pattern, &match_result);
-    if (match) {
-      FcChar8 *file = nullptr;
-      int face_index = 0;
-      if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch) {
-        FcPatternGetInteger(match, FC_INDEX, 0, &face_index);
-        const FontInstanceId candidate =
-            load_font_face(reinterpret_cast<const char *>(file), face_index,
-                           pixel_size, ligatures_enabled, subpixel_text);
-        if (candidate && has_codepoint(candidate, codepoint))
-          match_font = candidate;
-      }
-      FcPatternDestroy(match);
-    }
-    FcCharSetDestroy(charset);
-    FcPatternDestroy(pattern);
-    return match_font;
-  };
-
-  // Some text-presentation symbols live inside broad Unicode emoji blocks.
-  // Fontconfig can honor the requested "emoji" family even when that face does
-  // not contain the requested character (for example fish's U+276F prompt
-  // arrow). Try the normal text fallback chain when the emoji face has no
-  // glyph instead of returning the primary font's .notdef square.
-  FontInstanceId result =
-      emoji_presentation(codepoint) ? match_family("emoji") : 0;
-  if (!result)
-    result = match_family("sans-serif");
+  }
   if (!result)
     result = preferred;
   fallback_fonts_[key] = result;

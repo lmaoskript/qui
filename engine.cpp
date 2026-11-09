@@ -1,8 +1,7 @@
 //go:build cgo
 
 #include "engine.hpp"
-
-#include <fontconfig/fontconfig.h>
+#include "system_fonts.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -66,24 +65,6 @@ class Reader {
   const uint8_t *p_, *end_;
   bool ok_ = true;
 };
-
-std::string find_font(const char *family, int weight) {
-  std::string path;
-  FcPattern *pattern = FcPatternCreate();
-  FcPatternAddString(pattern, FC_FAMILY, reinterpret_cast<const FcChar8 *>(family));
-  FcPatternAddInteger(pattern, FC_WEIGHT, weight);
-  FcConfigSubstitute(nullptr, pattern, FcMatchPattern);
-  FcDefaultSubstitute(pattern);
-  FcResult result = FcResultNoMatch;
-  if (FcPattern *match = FcFontMatch(nullptr, pattern, &result)) {
-    FcChar8 *file = nullptr;
-    if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch)
-      path = reinterpret_cast<const char *>(file);
-    FcPatternDestroy(match);
-  }
-  FcPatternDestroy(pattern);
-  return path;
-}
 
 float clamp_size(float value, const float min_value, const float max_value) {
   if (max_value > 0) value = std::min(value, max_value);
@@ -195,10 +176,10 @@ void ListState::compute_range() {
 }
 
 Engine::Engine() {
-  sans_regular_ = find_font("sans-serif", FC_WEIGHT_REGULAR);
-  sans_bold_ = find_font("sans-serif", FC_WEIGHT_SEMIBOLD);
-  mono_regular_ = find_font("monospace", FC_WEIGHT_REGULAR);
-  mono_bold_ = find_font("monospace", FC_WEIGHT_SEMIBOLD);
+  sans_regular_ = system_font(false, false);
+  sans_bold_ = system_font(false, true);
+  mono_regular_ = system_font(true, false);
+  mono_bold_ = system_font(true, true);
   nodes.reserve(4096);
   lines.reserve(4096);
   frame.instances.reserve(16384);
@@ -375,9 +356,9 @@ FontInstanceId Engine::font_for(const Node &node) {
   const int rounded = static_cast<int>(size + 0.5f);
   const uint64_t key = (static_cast<uint64_t>(rounded) << 2) | (node.mono ? 2u : 0u) | (node.weight ? 1u : 0u);
   if (const auto it = font_cache_.find(key); it != font_cache_.end()) return it->second;
-  const std::string &path = node.mono ? (node.weight ? mono_bold_ : mono_regular_)
-                                      : (node.weight ? sans_bold_ : sans_regular_);
-  const FontInstanceId id = fonts.load_font(path, static_cast<float>(rounded), true, !node.mono);
+  const SystemFont &face = node.mono ? (node.weight ? mono_bold_ : mono_regular_)
+                                     : (node.weight ? sans_bold_ : sans_regular_);
+  const FontInstanceId id = fonts.load_font_face(face.path, face.index, static_cast<float>(rounded), true, !node.mono, face.weight);
   font_cache_[key] = id;
   return id;
 }
