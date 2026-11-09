@@ -89,7 +89,7 @@ A strict flexbox subset that maps directly to CSS.
 
 `TextStyle` fields, in order: `Size Bold Mono Ellipsis Color W Align Role Gradient Tracking`. Presets: `Body H1 H2 Small Code`.
 
-`Response` fields: `Found Hovered Pressed Clicked RightClicked Focused DragStart Dragging DragEnd X Y W H DX DY First Count Error`
+`Response` fields: `Found Hovered Pressed Clicked RightClicked Focused DragStart Dragging DragEnd Changed Submitted X Y W H DX DY First Count Error`
 
 Frame info: `Width Height Dpr Dt PointerX PointerY PointerDown`. `Stats()` gives `Nodes WireBytes EngineMs` for the last frame.
 
@@ -267,7 +267,7 @@ func main() {
 
 ## Verify without a window
 
-Any of the first three variables runs the app offscreen for a few frames and exits. Inspect the PNG or JSON rather than assuming the UI is right.
+Any of the first three variables runs the app offscreen for a few frames and exits. Inspect the PNG or JSON rather than assuming the UI is right. Offscreen runs use the CPU backend, which skips shaders, unless `QUI_BACKEND=gl` is set. Frames run faster than real time, so raise `QUI_FRAMES` if an animation has not settled.
 
 | Variable | Effect |
 | --- | --- |
