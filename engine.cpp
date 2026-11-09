@@ -1138,7 +1138,12 @@ IRect Engine::swap_and_damage() {
       }
     }
     for (size_t i = 0; i < frame.shaders.size(); ++i) {
-      if (frame.shaders[i].hash != previous.shaders[i].hash) damage = full;
+      const ShaderDraw &a = frame.shaders[i], &b = previous.shaders[i];
+      if (a.hash != b.hash) {
+        damage = full;
+      } else if (a.uniforms != b.uniforms || a.opacity != b.opacity || a.rect.x != b.rect.x || a.rect.y != b.rect.y || a.rect.w != b.rect.w || a.rect.h != b.rect.h) {
+        damage = unite(damage, unite(a.rect, b.rect));
+      }
     }
     damage = intersect(damage, full);
   }

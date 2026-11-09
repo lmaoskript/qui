@@ -120,6 +120,7 @@ struct ShaderUniform {
   std::string name;
   float v[4] = {};
   uint8_t n = 0;
+  bool operator==(const ShaderUniform &) const = default;
 };
 
 struct ShaderDraw {
