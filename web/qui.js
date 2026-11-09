@@ -200,6 +200,17 @@ function sizeCss(mode, value, property) {
   return "";
 }
 
+// Whether the node's height is known without measuring its own content. A Fill child of a
+// content-sized column must keep its content height as flex-basis, or the column collapses.
+function definiteHeight(node, parent) {
+  const hMode = node.hMode ?? Size.Fit;
+  if (hMode === Size.Px) return true;
+  if (hMode === Size.Fit || parent.kind === Kind.List) return false;
+  if (node.absolute) return true;
+  if (hMode === Size.Fill && parent.dir === Dir.Column && parent.scroll) return false;
+  return !!parent.hDef;
+}
+
 function css(node, parent) {
   let s = "position:relative;";
   const row = parent.dir === Dir.Row && parent.kind !== Kind.List;
@@ -218,8 +229,8 @@ function css(node, parent) {
     s += wMode === Size.Fill ? `flex:${node.wVal} 1 0;` : wMode === Size.Fit ? "flex:0 1 auto;" : "flex:0 0 auto;";
     if (hMode === Size.Fill) s += "align-self:stretch;";
   } else if (column) {
-    const stretches = hMode === Size.Fill && (parent.hMode ?? Size.Fit) !== Size.Fit && !parent.scroll;
-    s += stretches ? `flex:${node.hVal} 1 0;` : "flex:0 0 auto;";
+    const stretches = hMode === Size.Fill && !parent.scroll;
+    s += stretches ? `flex:${node.hVal} 1 ${parent.hDef ? "0" : "auto"};` : "flex:0 0 auto;";
     if (wMode === Size.Fill) s += "align-self:stretch;";
   } else if (parent.kind === Kind.List) {
     s += "width:100%;";
@@ -843,7 +854,8 @@ class Patcher {
   }
 
   patch(el, node, parent) {
-    const signature = node.sig ^ (parent.dir * 2654435761) ^ (parent.kind === Kind.List ? 7 : 0);
+    node.hDef = definiteHeight(node, parent);
+    const signature = node.sig ^ (parent.dir * 2654435761) ^ (parent.kind === Kind.List ? 7 : 0) ^ (parent.hDef ? 11 : 0);
     if (el.__sig !== signature) {
       el.__sig = signature;
       el.style.cssText = css(node, parent);
@@ -955,6 +967,7 @@ class Patcher {
     this.setTheme(theme);
     root.dir = Dir.Stack;
     root.kind = Kind.Box;
+    root.hDef = true;
     this.reconcile(this.root, root, null, null);
     this.engineMs = performance.now() - began;
   }
