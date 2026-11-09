@@ -33,6 +33,10 @@ void qui_pick_files(qui_app *app, int multiple);
 /* Pops the next chosen path, or NULL when none. Valid until the next call. */
 const char *qui_picked_file(qui_app *app);
 
+/* Whether files are being dragged over the window. Dropped files arrive
+ * through qui_picked_file. */
+int qui_files_hovering(qui_app *app);
+
 /* Puts UTF-8 text on the system clipboard. */
 void qui_set_clipboard(qui_app *app, const char *text);
 

@@ -234,7 +234,7 @@ struct qui_app {
   float scrollbar_grab = 0;
   bool back_pending = false, back_consumed = false;
   bool dragging = false, focus_ring = false, selecting = false, caret_on = true, text_cursor = false, pointer_down = false, pointer_tapped = false;
-  bool text_selecting = false;
+  bool text_selecting = false, files_hovering = false;
   float engine_ms = 0;
   std::vector<uint32_t> keys;
   std::string clipboard, text_blob;
@@ -1183,6 +1183,18 @@ struct qui_app {
         keys.push_back(mods_from_sdl(e.key.mod) | kKeyReleased);
         dirty = true;
         break;
+      case SDL_EVENT_DROP_BEGIN:
+        files_hovering = true;
+        dirty = true;
+        break;
+      case SDL_EVENT_DROP_POSITION:
+        to_logical(e.drop.x, e.drop.y, pointer_x, pointer_y);
+        dirty = true;
+        break;
+      case SDL_EVENT_DROP_COMPLETE:
+        files_hovering = false;
+        dirty = true;
+        break;
       case SDL_EVENT_DROP_FILE:
         if (e.drop.data) {
           std::lock_guard lock(picked_lock);
@@ -1228,6 +1240,23 @@ struct qui_app {
     }
     if (step.rfind("ime:", 0) == 0) {
       set_preedit(step.c_str() + 4, step.size() - 4);
+      return;
+    }
+    if (int used = 0; std::sscanf(step.c_str(), "dragover:%f,%f%n", &x, &y, &used) == 2 || std::sscanf(step.c_str(), "drop:%f,%f,%n", &x, &y, &used) == 2) {
+      const auto drop = [&](SDL_EventType type, const char *data = nullptr) {
+        SDL_Event e{};
+        e.type = type;
+        e.drop.x = x * dpr;
+        e.drop.y = y * dpr;
+        e.drop.data = data;
+        handle(e);
+      };
+      drop(SDL_EVENT_DROP_BEGIN);
+      drop(SDL_EVENT_DROP_POSITION);
+      if (step.rfind("drop:", 0) == 0) {
+        drop(SDL_EVENT_DROP_FILE, step.c_str() + used);
+        drop(SDL_EVENT_DROP_COMPLETE);
+      }
       return;
     }
     if (step.rfind("key:", 0) == 0) {
@@ -1610,6 +1639,8 @@ void qui_set_app_id(const char *id) { g_app_id = id ? id : ""; }
 void qui_consume_back(qui_app *app) { app->back_consumed = true; }
 
 void qui_set_clipboard(qui_app *app, const char *text) { app->set_clipboard(text ? text : ""); }
+
+int qui_files_hovering(qui_app *app) { return app && app->files_hovering ? 1 : 0; }
 
 const char *qui_selected_text(qui_app *app) { return app ? app->engine.selection_cache.c_str() : ""; }
 

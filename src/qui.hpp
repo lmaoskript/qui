@@ -223,6 +223,9 @@ class Ui {
     return out;
   }
   void set_clipboard(const std::string &text) { qui_set_clipboard(app_, text.c_str()); }
+  // Whether files are dragged over the window; dropped ones arrive through
+  // picked_files. Native only.
+  bool files_hovering() const { return qui_files_hovering(app_) != 0; }
   // The text selected in a `select` box as of the last frame.
   std::string selected_text() const { return qui_selected_text(app_); }
   // Eases mouse wheel steps. Browsers smooth the wheel themselves.

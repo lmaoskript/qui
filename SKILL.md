@@ -236,7 +236,7 @@ if menu && ui.Popup("ctx", x, y, qui.Style{W: qui.Px(180), Bg: qui.Raised, Radiu
 ui.Tooltip(row.Hovered, "Copy link")
 ```
 
-`PickFiles(multiple)` opens the system file picker without blocking and `PickedFiles()` returns the paths chosen so far, clearing them; the app is woken when the user picks (native only; C++ `pick_files`, `picked_files`).
+`PickFiles(multiple)` opens the system file picker without blocking and `PickedFiles()` returns the paths chosen so far, clearing them; the app is woken when the user picks. Files dropped on the window arrive the same way, and `FilesHovering()` is true while they are dragged over it (native only; C++ `pick_files`, `picked_files`, `files_hovering`).
 
 `SetClipboard(text)` (C++ `set_clipboard`) puts text on the system clipboard, which a context menu's "Copy" needs; browsers only allow it inside a click.
 
@@ -362,7 +362,7 @@ Any of the first three variables runs the app offscreen for a few frames and exi
 | `QUI_DPR=2` | Pixel ratio |
 | `QUI_BACKEND=cpu` or `gl` | Force a renderer |
 | `QUI_FRAMES=n` | Minimum frames before exiting |
-| `QUI_DRIVE='click:58,231;type:hello;key:ctrl+a'` | Scripted input, `;` separated, in logical pixels: `click:x,y`, `dblclick:x,y`, `rclick:x,y`, `drag:x0,y0,x1,y1`, `down:x,y`, `up:x,y`, `move:x,y`, `wheel:x,y,amount` (negative scrolls down), `type:text`, `key:shift+left`, `ime:text`, `wait:frames`. Touch: `tap:x,y`, `longpress:x,y`, `swipe:x0,y0,x1,y1,ms`, `pinch:x,y,spread0,spread1`, `touch:x,y`, `touchmove:x,y`, `touchup:x,y` |
+| `QUI_DRIVE='click:58,231;type:hello;key:ctrl+a'` | Scripted input, `;` separated, in logical pixels: `click:x,y`, `dblclick:x,y`, `rclick:x,y`, `drag:x0,y0,x1,y1`, `down:x,y`, `up:x,y`, `move:x,y`, `wheel:x,y,amount` (negative scrolls down), `type:text`, `key:shift+left`, `ime:text`, `wait:frames`, `dragover:x,y`, `drop:x,y,path`. Touch: `tap:x,y`, `longpress:x,y`, `swipe:x0,y0,x1,y1,ms`, `pinch:x,y,spread0,spread1`, `touch:x,y`, `touchmove:x,y`, `touchup:x,y` |
 
 ## Not available yet
 

@@ -57,6 +57,9 @@ func (u *Ui) SetClipboard(text string) {
 	}
 }
 
+// FilesHovering is always false in the browser.
+func (u *Ui) FilesHovering() bool { return false }
+
 // SelectedText returns the text selected on the page.
 func (u *Ui) SelectedText() string {
 	if sel := js.Global().Call("getSelection"); sel.Truthy() {

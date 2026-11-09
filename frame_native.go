@@ -46,6 +46,10 @@ func (u *Ui) PickedFiles() []string {
 // SetClipboard puts text on the system clipboard.
 func (u *Ui) SetClipboard(text string) { u.app.SetClipboard(text) }
 
+// FilesHovering reports whether files are dragged over the window. Dropped
+// files arrive through PickedFiles.
+func (u *Ui) FilesHovering() bool { return u.app.FilesHovering() }
+
 // SelectedText returns the text selected in a Select box as of the last frame.
 func (u *Ui) SelectedText() string { return u.app.SelectedText() }
 
