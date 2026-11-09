@@ -211,6 +211,12 @@ Native needs `sdl3 freetype2 harfbuzz fontconfig` through pkg-config.
 </script>
 ```
 
+For production, install the CLI once with `go install ./cmd/qui` from the qui repo, then run `qui build [app folder]`. It writes `dist/` with a stripped wasm, one minified JS bundle, content-hashed names and `.br` and `.gz` copies. Flags go before or after the folder: `-o out -title T -bg '#000' -sans F -mono F -prevent-keys ctrl+k,ctrl+s -compress=false`.
+
+- An `index.html` in the app folder replaces the generated page. The script tag is added for you; keep `html, body { height: 100%; margin: 0 }` in it.
+- `public/` in the app folder is copied into the output as is, for favicons, fonts and `robots.txt`.
+- The host must serve `.wasm` as `application/wasm`, and needs configuring to use the `.br` and `.gz` copies. Hashed files can be cached forever; `index.html` should not be.
+
 On Linux, `SetAppID` must equal the app's `.desktop` basename or the compositor shows the wrong icon and name. `sys.Install` writes that file.
 
 ## Linux install, services and capture
