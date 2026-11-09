@@ -50,6 +50,7 @@ struct BoxShadow {
 };
 
 struct Style {
+  std::string_view klass{};
   Size w{}, h{};
   float min_w = 0, max_w = 0, min_h = 0, max_h = 0;
   Edges pad{};
@@ -67,10 +68,10 @@ struct Style {
   uint8_t gestures = 0;
   uint8_t role = 0;
   std::string_view label{}, key{};
-  std::string_view klass{};
 };
 
 struct TextStyle {
+  std::string_view klass{};
   float size = 0;
   bool bold = false, mono = false, ellipsis = false;
   Color color = 0;
@@ -79,7 +80,6 @@ struct TextStyle {
   uint8_t role = 0;
   Gradient gradient{};
   float tracking = 0;
-  std::string_view klass{};
 };
 
 inline constexpr TextStyle Body{};

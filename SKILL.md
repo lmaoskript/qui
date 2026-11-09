@@ -101,7 +101,7 @@ Prefer theme tokens, which track `ui.SetTheme(qui.Midnight)` (`Slate` default, `
 
 Custom themes and app tokens: `qui.Token(20)` and up are yours. `ui.SetPalette(qui.Midnight, map[qui.Color]qui.Color{Rail: qui.RGB(..), qui.Accent: ..})` picks a base theme and overrides or adds tokens, so every box using them re-themes at once (C++: `ui.set_palette(base, {{Ui::token(20), rgba(..)}})`).
 
-Classes: `ui.Class("card", qui.Style{Bg: Panel, Pad: qui.All(12), Radius: 8})` then `Style{Class: "card elevated"}`. Classes fill only fields left at zero; later classes beat earlier ones and the element's own fields beat both. `ui.TextClass` and `TextStyle.Class` do the same for text (C++: `define_class`, `define_text_class`, `.klass`). They are resolved in your process, so they cost nothing on the wire.
+Classes: `ui.Class("card", qui.Style{Bg: Panel, Pad: qui.All(12), Radius: 8})` then `Style{Class: "card elevated"}`. Classes fill only fields left at zero; later classes beat earlier ones and the element's own fields beat both. `ui.TextClass` and `TextStyle.Class` do the same for text (C++: `define_class`, `define_text_class`, `.klass`, which comes first in `Style` and `TextStyle` so it leads a designated initializer). They are resolved in your process, so they cost nothing on the wire.
 
 Literals: `qui.RGB(r, g, b)`, `qui.RGBA(r, g, b, a)`; C++ `rgba(r, g, b, a)`.
 
