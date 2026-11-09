@@ -665,7 +665,7 @@ struct qui_app {
     } else if (key == 'c' && (mods & ModCtrl) && !engine.selection.empty()) {
       set_clipboard(engine.selected_text());
     } else if (focused && !mods && (key == KeyEnter || key == KeySpace)) {
-      const auto hit = std::find_if(engine.hits.begin(), engine.hits.end(), [&](const HitEntry &e) { return e.id == focused && e.focusable; });
+      const auto hit = std::find_if(engine.hits.begin(), engine.hits.end(), [&](const HitEntry &e) { return e.id == focused && e.focusable && e.role != RoleSlider; });
       if (hit != engine.hits.end()) {
         clicked = focused;
         dirty = true;

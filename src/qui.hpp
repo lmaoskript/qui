@@ -434,6 +434,40 @@ class Ui {
     return lookup(id);
   }
 
+  // An on/off switch. Returns true when it was toggled this frame, by a click or
+  // by Enter or Space while it has focus. `label` names it for assistive tech.
+  bool toggle_switch(std::string_view key, bool on, std::string_view label = {}) {
+    const float value = on ? 1.f : 0.f;
+    return stack({.w = px(38), .h = px(22), .bg = on ? Accent : Active, .radius = 11, .hit = true, .role = RoleSwitch, .label = label, .key = key}, [&] {
+             f32_op(wire::OpValue, value);
+             column({.w = px(16), .h = px(16), .absolute = true, .x = on ? 19.f : 3.f, .y = 3, .bg = Strong, .radius = 8}, [] {});
+           })
+        .clicked;
+  }
+
+  // A horizontal slider for a value from 0 to 1; returns the new value. Pressing
+  // or dragging sets it; with focus, the arrow keys step it by 5% and Home and
+  // End jump to the ends.
+  float slider(std::string_view key, float value, Size w, std::string_view label = {}) {
+    constexpr float thumb = 14, step = 0.05f;
+    const auto clamp01 = [](float v) { return std::min(std::max(v, 0.f), 1.f); };
+    value = clamp01(value);
+    const Response r = row({.w = w, .h = px(20), .align = Center, .hit = true, .gestures = GesturePanX | GestureTouchOnly, .role = RoleSlider, .label = label, .key = key}, [&] {
+      f32_op(wire::OpValue, value);
+      column({.w = fill(value), .h = px(6), .bg = Accent, .radius = 3}, [] {});
+      column({.w = px(thumb), .h = px(thumb), .bg = Strong, .radius = thumb / 2}, [] {});
+      column({.w = fill(1 - value), .h = px(6), .bg = Active, .radius = 3}, [] {});
+    });
+    if ((r.pressed || r.panning || r.clicked) && r.w > thumb) value = clamp01((pointer_x() - r.x - thumb / 2) / (r.w - thumb));
+    if (r.focused) {
+      if (key_pressed(KeyLeft) || key_pressed(KeyDown)) value = clamp01(value - step);
+      else if (key_pressed(KeyRight) || key_pressed(KeyUp)) value = clamp01(value + step);
+      else if (key_pressed(KeyHome)) value = 0;
+      else if (key_pressed(KeyEnd)) value = 1;
+    }
+    return value;
+  }
+
   template <class F>
   Response list(std::string_view key, uint32_t count, float estimate, const ListOptions &options, F &&row_body) {
     const uint64_t id = open(wire::KindList, key);

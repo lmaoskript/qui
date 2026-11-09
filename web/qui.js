@@ -44,7 +44,7 @@ const baseCss = `
   font: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .qui-btn:hover { box-shadow: inset 0 0 0 999px var(--qui-Hover); }
 .qui-btn:active { box-shadow: inset 0 0 0 999px var(--qui-Active); }
-.qui-btn:focus-visible { outline: 2px solid var(--qui-Accent); outline-offset: 1px; }
+.qui-btn:focus-visible, .qui-root [role=switch]:focus-visible, .qui-root [role=slider]:focus-visible { outline: 2px solid var(--qui-Accent); outline-offset: 1px; }
 .qui-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .qui-input { display: block; padding: 5px 9px; border: 1px solid var(--qui-Line); border-radius: 6px; background: var(--qui-Inset);
   color: var(--qui-Ink); font: inherit; outline: none; resize: none; }
@@ -174,6 +174,7 @@ function decode(bytes, length) {
       case Op.Clip: node.clip = true; break;
       case Op.Select: node.select = true; break;
       case Op.Wrap: node.wrap = true; break;
+      case Op.Value: node.value = r.f32(); break;
       case Op.Scroll: node.scroll = true; break;
       case Op.Hit: node.hit = r.u8(); break;
       case Op.Role: node.role = r.u8(); break;
@@ -751,6 +752,12 @@ class Patcher {
         if (this.fieldKey(e.target, e, code, mods, shot)) return;
       } else if (e.target.tagName === "BUTTON" && !mods && (code === Key.Enter || code === Key.Space)) {
         return;
+      } else if (e.target.getAttribute?.("role") === "switch" && !mods && (code === Key.Enter || code === Key.Space)) {
+        e.preventDefault();
+        e.target.click();
+        return;
+      } else if (e.target.getAttribute?.("role") === "slider" && [Key.Left, Key.Right, Key.Up, Key.Down, Key.Home, Key.End].includes(code)) {
+        e.preventDefault();
       }
       this.keys.push(code, mods);
       this.requestFrame();
@@ -971,6 +978,16 @@ class Patcher {
       if (node.label) el.setAttribute("aria-label", node.label);
       else el.removeAttribute("aria-label");
       if (node.role === Role.Image) el.setAttribute("role", "img");
+      if (node.role === Role.Switch || node.role === Role.Slider) {
+        el.setAttribute("role", node.role === Role.Switch ? "switch" : "slider");
+        el.tabIndex = 0;
+        if (node.role === Role.Switch) el.setAttribute("aria-checked", String((node.value ?? 0) >= 0.5));
+        else {
+          el.setAttribute("aria-valuemin", "0");
+          el.setAttribute("aria-valuemax", "100");
+          el.setAttribute("aria-valuenow", String(Math.round((node.value ?? 0) * 100)));
+        }
+      }
       el.classList.toggle("qui-select", !!node.select);
       if (node.hit || node.kind === Kind.Button || node.kind === Kind.Input) el.setAttribute("data-qh", "");
       else el.removeAttribute("data-qh");

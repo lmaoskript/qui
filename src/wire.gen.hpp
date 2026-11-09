@@ -6,7 +6,7 @@ namespace qui {
 
 namespace wire {
 
-inline constexpr uint8_t kVersion = 16;
+inline constexpr uint8_t kVersion = 17;
 inline constexpr int kThemeCount = 4;
 inline constexpr int kTokenCount = 19;
 
@@ -67,6 +67,7 @@ enum Op : uint8_t {
   OpPassthroughNav = 53,
   OpSelect = 54,
   OpWrap = 55,
+  OpValue = 56,
 };
 
 enum Kind : uint8_t {
@@ -172,6 +173,8 @@ inline constexpr uint8_t RoleLink = 2;
 inline constexpr uint8_t RoleImage = 3;
 inline constexpr uint8_t RoleMain = 4;
 inline constexpr uint8_t RoleNav = 5;
+inline constexpr uint8_t RoleSwitch = 6;
+inline constexpr uint8_t RoleSlider = 7;
 
 inline constexpr uint8_t Slate = 0;
 inline constexpr uint8_t Midnight = 1;

@@ -198,7 +198,7 @@ struct HitEntry {
   bool press = false, scroll = false, focusable = false, scrollbar = false, link = false;
   float thumb_y = 0, thumb_h = 0;
   int32_t scroll_parent = -1, parent = -1;
-  uint8_t gestures = 0;
+  uint8_t gestures = 0, role = 0;
 };
 
 struct ScrollState {

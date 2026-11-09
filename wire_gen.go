@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 16
+const wireVersion = 17
 
 const (
 	opEnd            = 0
@@ -59,6 +59,7 @@ const (
 	opPassthroughNav = 53
 	opSelect         = 54
 	opWrap           = 55
+	opValue          = 56
 )
 
 const (
@@ -136,6 +137,8 @@ const (
 	RoleImage   Role = 3
 	RoleMain    Role = 4
 	RoleNav     Role = 5
+	RoleSwitch  Role = 6
+	RoleSlider  Role = 7
 )
 
 const (

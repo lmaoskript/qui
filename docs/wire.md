@@ -27,6 +27,7 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `Dir` | `u8` |
 | `Width`, `Height` | `mode:u8 value:f32` |
 | `MinW`, `MaxW`, `MinH`, `MaxH`, `Gap`, `Radius`, `Opacity`, `FontSize`, `Fps` | `f32` |
+| `Value` | `f32`, the state of a `Switch` (0 or 1) or `Slider` (0 to 1) box, for assistive tech |
 | `Pad` | `top:f32 right:f32 bottom:f32 left:f32` |
 | `Align`, `Justify`, `Hit`, `Role`, `Weight` | `u8` |
 | `Gestures` | `u8` mask of `PanX`, `PanY`, `Pinch` and `TouchOnly` |

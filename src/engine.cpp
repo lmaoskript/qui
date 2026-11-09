@@ -325,6 +325,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpClip: node.clip = true; break;
       case OpSelect: node.select_root = stack.back(); break;
       case OpWrap: node.wrap = true; break;
+      case OpValue: in.read<float>(); break;
       case OpScroll: node.scroll = node.clip = true; break;
       case OpHit: node.hit = in.read<uint8_t>(); break;
       case OpRole: node.role = in.read<uint8_t>(); break;
@@ -1173,10 +1174,11 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     hit.cy1 = static_cast<float>(clip.y + clip.h) / dpr;
     hit.press = node.hit != 0;
     hit.scroll = node.scroll || node.kind == KindList || (node.kind == KindInput && node.multiline);
-    hit.focusable = node.kind == KindButton || node.kind == KindInput;
+    hit.focusable = node.kind == KindButton || node.kind == KindInput || node.role == RoleSwitch || node.role == RoleSlider;
     hit.scroll_parent = scroll_parent_;
     hit.parent = hit_parent_;
     hit.gestures = node.gestures;
+    hit.role = node.role;
     hits.push_back(hit);
     own_hit = static_cast<int32_t>(hits.size()) - 1;
     if (hit.scroll) own_scroll = own_hit;
@@ -1233,7 +1235,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     const uint32_t border = node.kind == KindInput && node.id == ui.focused ? static_cast<uint32_t>(Accent) : node.border;
     add_rect(x0, y0, w, h, fade(resolve(border)), radius, std::max(1.f, std::round(node.border_w * dpr)), clip);
   }
-  if (node.kind == KindButton && node.id == ui.focused && ui.focus_ring) {
+  if ((node.kind == KindButton || node.role == RoleSwitch || node.role == RoleSlider) && node.id == ui.focused && ui.focus_ring) {
     add_rect(x0, y0, w, h, fade(resolve(Accent)), radius, std::round(2 * dpr), clip);
   }
 

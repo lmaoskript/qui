@@ -109,6 +109,8 @@ Literals: `qui.RGB(r, g, b)`, `qui.RGBA(r, g, b, a)`; C++ `rgba(r, g, b, a)`.
 
 On the web, `Role` picks the element (`RoleHeading` h2, `RoleLink` a, `RoleMain` main, `RoleNav` nav, `RoleImage` role=img) and `Label` sets the accessible name.
 
+Controls: `if ui.Switch("sounds", on, "Sounds") { on = !on }` and `vol = ui.Slider("volume", vol, qui.Px(160), "Volume")` (0 to 1). Both take Tab focus, work from the keyboard (Space, arrows, Home, End) and are role=switch / role=slider on the web. C++: `ui.toggle_switch(key, on, label)`, `ui.slider(key, value, w, label)`.
+
 ## Text input and keys
 
 ```go

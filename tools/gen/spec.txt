@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 16
+version 17
 
 kind Box 0
 kind Text 1
@@ -45,6 +45,8 @@ role Link 2
 role Image 3
 role Main 4
 role Nav 5
+role Switch 6
+role Slider 7
 
 # payload after each op is documented in docs/wire.md
 op End 0
@@ -103,6 +105,7 @@ op ImageFree 52
 op PassthroughNav 53
 op Select 54
 op Wrap 55
+op Value 56
 
 gesture PanX 1
 gesture PanY 2
