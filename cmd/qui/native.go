@@ -169,12 +169,16 @@ func (t *toolchain) buildHarfbuzz() error {
 		return err
 	}
 	defer os.RemoveAll(work)
-	object := filepath.Join(work, "harfbuzz.o")
-	args := append([]string{"-c", filepath.Join(dir, "src", "harfbuzz.cc"), "-o", object, "-O2", "-std=c++17", "-fno-exceptions", "-fno-rtti",
-		"-DHAVE_FREETYPE=1", "-DHAVE_FT_GET_VAR_BLEND_COORDINATES=1", "-DHAVE_FT_SET_VAR_BLEND_COORDINATES=1", "-DHAVE_FT_DONE_MM_VAR=1", "-DHAVE_FT_GET_TRANSFORM=1",
-		"-I" + filepath.Join(t.prefix, "include", "freetype2")}, t.hbFlags...)
-	if err := run("", nil, t.cxx, args...); err != nil {
-		return err
+	var objects []string
+	for _, unit := range []string{"harfbuzz", "hb-raster-draw", "hb-raster-image", "hb-raster-paint"} {
+		object := filepath.Join(work, unit+".o")
+		objects = append(objects, object)
+		args := append([]string{"-c", filepath.Join(dir, "src", unit+".cc"), "-o", object, "-O2", "-std=c++17", "-fno-exceptions", "-fno-rtti",
+			"-DHAVE_FREETYPE=1", "-DHAVE_FT_GET_VAR_BLEND_COORDINATES=1", "-DHAVE_FT_SET_VAR_BLEND_COORDINATES=1", "-DHAVE_FT_DONE_MM_VAR=1", "-DHAVE_FT_GET_TRANSFORM=1",
+			"-I" + filepath.Join(t.prefix, "include", "freetype2")}, t.hbFlags...)
+		if err := run("", nil, t.cxx, args...); err != nil {
+			return err
+		}
 	}
 	lib := filepath.Join(t.prefix, "lib")
 	if err := os.MkdirAll(filepath.Join(lib, "pkgconfig"), 0o755); err != nil {
@@ -182,7 +186,7 @@ func (t *toolchain) buildHarfbuzz() error {
 	}
 	archive := filepath.Join(lib, "libharfbuzz.a")
 	os.Remove(archive)
-	if err := run("", nil, t.ar, "rcs", archive, object); err != nil {
+	if err := run("", nil, t.ar, append([]string{"rcs", archive}, objects...)...); err != nil {
 		return err
 	}
 	include := filepath.Join(t.prefix, "include", "harfbuzz")
@@ -206,7 +210,7 @@ func (t *toolchain) buildHarfbuzz() error {
 	return os.WriteFile(filepath.Join(lib, "pkgconfig", "harfbuzz.pc"), []byte(pc), 0o644)
 }
 
-const depsStamp = "SDL3-3.4.20 freetype-2.14.1 harfbuzz-15.1.0 libpng-1.6.50 v1"
+const depsStamp = "SDL3-3.4.20 freetype-2.14.1 harfbuzz-15.1.0 libpng-1.6.50 v2"
 
 // prepare builds the C libraries for a target once and caches them.
 func (t *toolchain) prepare() error {

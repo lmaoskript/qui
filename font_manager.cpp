@@ -9,10 +9,15 @@
 #include FT_OUTLINE_H
 #include FT_MULTIPLE_MASTERS_H
 #include <hb-ft.h>
+#include <hb-ot.h>
+#if defined(__ANDROID__)
+#include <hb-raster.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 
 namespace qui {
@@ -36,6 +41,7 @@ struct FontManager::FontInstance {
   std::string path;
   FT_Face face = nullptr;
   hb_font_t *hb = nullptr;
+  hb_font_t *paint_font = nullptr;
   float pixel_size = 0.0f;
   float weight = 0.0f;
   float raster_scale = 1.0f;
@@ -47,6 +53,8 @@ struct FontManager::FontInstance {
   std::unordered_map<uint32_t, CachedGlyph> glyphs;
 
   ~FontInstance() {
+    if (paint_font)
+      hb_font_destroy(paint_font);
     if (hb)
       hb_font_destroy(hb);
     if (face)
@@ -143,6 +151,14 @@ FontInstanceId FontManager::load_font_face(const std::string &path,
   // hb-ft rescale advances a second time, collapsing a 14px emoji's advance
   // to about 2px; the shaper applies position_scale instead.
 
+#if defined(__ANDROID__)
+  if (hb_ot_color_has_paint(hb_font_get_face(instance->hb))) {
+    instance->paint_font = hb_font_create(hb_font_get_face(instance->hb));
+    const int scale = static_cast<int>(pixel_size * 64.0f);
+    hb_font_set_scale(instance->paint_font, scale, scale);
+  }
+#endif
+
   instance->id = static_cast<FontInstanceId>(fonts_.size() + 1);
   instance->path = path;
   instance->face_index = face_index;
@@ -202,6 +218,46 @@ bool FontManager::has_codepoint(FontInstanceId font,
 }
 
 namespace {
+
+// FreeType exposes COLR v1 glyphs but does not rasterize them.
+bool paint_color_glyph(hb_font_t *font, uint32_t glyph, std::vector<uint8_t> &pixels,
+                       FT_Bitmap &bitmap, int &left, int &top) {
+#if defined(__ANDROID__)
+  if (!hb_ot_color_glyph_has_paint(hb_font_get_face(font), glyph))
+    return false;
+  static hb_raster_paint_t *const paint = hb_raster_paint_create_or_fail();
+  hb_glyph_extents_t extents{};
+  if (!paint || !hb_font_get_glyph_extents(font, glyph, &extents))
+    return false;
+  hb_raster_paint_set_scale_factor(paint, 64.0f, 64.0f);
+  hb_raster_paint_set_transform(paint, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
+  if (!hb_raster_paint_set_glyph_extents(paint, &extents))
+    return false;
+  hb_raster_paint_glyph(paint, font, glyph);
+  hb_raster_image_t *image = hb_raster_paint_render(paint);
+  if (!image)
+    return false;
+  hb_raster_extents_t area{};
+  hb_raster_image_get_extents(image, &area);
+  pixels.resize(static_cast<size_t>(area.height) * area.stride);
+  const uint8_t *source = hb_raster_image_get_buffer(image);
+  for (unsigned row = 0; row < area.height; ++row)
+    std::memcpy(pixels.data() + (area.height - 1 - row) * area.stride,
+                source + row * area.stride, area.stride);
+  hb_raster_paint_recycle_image(paint, image);
+  bitmap.width = area.width;
+  bitmap.rows = area.height;
+  bitmap.pitch = static_cast<int>(area.stride);
+  bitmap.buffer = pixels.data();
+  bitmap.pixel_mode = FT_PIXEL_MODE_BGRA;
+  left = area.x_origin;
+  top = area.y_origin + static_cast<int>(area.height);
+  return true;
+#else
+  (void)font, (void)glyph, (void)pixels, (void)bitmap, (void)left, (void)top;
+  return false;
+#endif
+}
 
 bool emoji_presentation(uint32_t codepoint) {
   return (codepoint >= 0x1f000 && codepoint <= 0x1faff) ||
@@ -380,12 +436,18 @@ const CachedGlyph *FontManager::get_glyph(FontInstanceId font,
     FT_Outline_Translate(&face->glyph->outline,
                          static_cast<FT_Pos>(quarter_pixel) * 16, 0);
 
-  if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
+  std::vector<uint8_t> painted;
+  FT_Bitmap painted_bitmap{};
+  int painted_left = 0, painted_top = 0;
+  const bool use_paint = instance.paint_font &&
+      paint_color_glyph(instance.paint_font, glyph_id, painted, painted_bitmap,
+                        painted_left, painted_top);
+  if (!use_paint && FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
     std::fprintf(stderr, "font: FT_Render_Glyph failed for glyph %u\n",
                  static_cast<unsigned>(glyph_id));
     return nullptr;
   }
-  const FT_Bitmap &bitmap = face->glyph->bitmap;
+  const FT_Bitmap &bitmap = use_paint ? painted_bitmap : face->glyph->bitmap;
   if (bitmap.pixel_mode != FT_PIXEL_MODE_GRAY &&
       bitmap.pixel_mode != FT_PIXEL_MODE_BGRA &&
       bitmap.pixel_mode != FT_PIXEL_MODE_MONO) {
@@ -400,9 +462,9 @@ const CachedGlyph *FontManager::get_glyph(FontInstanceId font,
   glyph.bitmap_height = static_cast<uint32_t>(
       std::lround(bitmap.rows * instance.raster_scale));
   glyph.bitmap_left = static_cast<int32_t>(
-      std::lround(face->glyph->bitmap_left * instance.raster_scale));
+      std::lround((use_paint ? painted_left : face->glyph->bitmap_left) * instance.raster_scale));
   glyph.bitmap_top = static_cast<int32_t>(
-      std::lround(face->glyph->bitmap_top * instance.raster_scale));
+      std::lround((use_paint ? painted_top : face->glyph->bitmap_top) * instance.raster_scale));
   glyph.has_bitmap = bitmap.width != 0 && bitmap.rows != 0;
   glyph.color_bitmap = bitmap.pixel_mode == FT_PIXEL_MODE_BGRA;
 
