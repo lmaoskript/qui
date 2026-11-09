@@ -200,6 +200,7 @@ class Ui {
   }
 
   void wake() { qui_wake(app_); }
+  void set_clipboard(const std::string &text) { qui_set_clipboard(app_, text.c_str()); }
   void set_theme(uint8_t theme) { theme_ = theme; }
 
   constexpr static Color token(uint8_t id) { return Color(id) << 24; }

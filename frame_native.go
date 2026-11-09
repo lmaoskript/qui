@@ -26,6 +26,9 @@ func (u *Ui) Wake() { u.app.Wake() }
 
 func (u *Ui) consumeBack() { u.app.ConsumeBack() }
 
+// SetClipboard puts text on the system clipboard.
+func (u *Ui) SetClipboard(text string) { u.app.SetClipboard(text) }
+
 func (u *Ui) submit() { u.app.Submit(u.buf) }
 
 func (u *Ui) wait() []byte { return u.app.Wait() }

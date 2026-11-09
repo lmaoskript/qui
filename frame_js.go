@@ -43,6 +43,14 @@ func (u *Ui) Wake() { u.bridge.Call("invalidate") }
 
 func (u *Ui) consumeBack() {}
 
+// SetClipboard puts text on the system clipboard. Browsers only allow it while
+// handling a user gesture.
+func (u *Ui) SetClipboard(text string) {
+	if clipboard := js.Global().Get("navigator").Get("clipboard"); !clipboard.IsUndefined() {
+		clipboard.Call("writeText", text)
+	}
+}
+
 func (u *Ui) submit() {
 	if len(u.buf) > u.outCap {
 		u.outCap = len(u.buf) * 2

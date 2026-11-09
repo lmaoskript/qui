@@ -1478,6 +1478,8 @@ void qui_set_app_id(const char *id) { g_app_id = id ? id : ""; }
 
 void qui_consume_back(qui_app *app) { app->back_consumed = true; }
 
+void qui_set_clipboard(qui_app *app, const char *text) { app->set_clipboard(text ? text : ""); }
+
 void qui_wake(qui_app *app) {
   if (!app || app->headless) return;
   SDL_Event event{};

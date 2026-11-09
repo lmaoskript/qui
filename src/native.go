@@ -40,6 +40,12 @@ func (a *App) Wake() { C.qui_wake(a.app) }
 
 func (a *App) ConsumeBack() { C.qui_consume_back(a.app) }
 
+func (a *App) SetClipboard(text string) {
+	ctext := C.CString(text)
+	defer C.free(unsafe.Pointer(ctext))
+	C.qui_set_clipboard(a.app, ctext)
+}
+
 func (a *App) Submit(buf []byte) {
 	C.qui_frame_end(a.app, (*C.uint8_t)(unsafe.Pointer(unsafe.SliceData(buf))), C.size_t(len(buf)))
 }
