@@ -1,4 +1,4 @@
-import { Align, Dir, Flag, Key, Kind, Mod, Op, Role, Size, Themes, Tokens, Version } from "./wire.gen.js";
+import { Align, Dir, Flag, Gesture, Key, Kind, Mod, Op, Role, Size, Themes, Tokens, Version } from "./wire.gen.js";
 
 const HEADER = 64;
 const SLOT = 56;
@@ -7,6 +7,12 @@ const MAX_LIST_PX = 15000000; // Firefox discards element heights above about 17
 const listPitch = (node) => (node.est || 32) + (node.gap || 0);
 const isHugeList = (node) => node.count * listPitch(node) > MAX_LIST_PX;
 const DRAG_THRESHOLD = 4;
+const TOUCH_SLOP = 8;
+const LONG_PRESS_MS = 500;
+const PRESS_DELAY_MS = 80;
+const DOUBLE_TAP_MS = 300;
+const DOUBLE_TAP_SLOP = 24;
+const VELOCITY_WINDOW_MS = 100;
 const MAGIC = 0x31495551;
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
@@ -50,8 +56,9 @@ const baseCss = `
 .qui-end > * { flex-shrink: 0; }
 .qui-root, .qui-root * { scrollbar-width: thin; scrollbar-color: var(--qui-Scrollbar) transparent; }
 .qui-root canvas { display: block; }
-.qui-root [data-qh], .qui-list, .qui-text { pointer-events: auto; }
-.qui-root [data-qh]:not(.qui-input) { user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+.qui-root [data-qh], .qui-root [data-qp], .qui-list, .qui-text { pointer-events: auto; }
+.qui-root [data-qh]:not(.qui-input) { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
+.qui-panning, .qui-panning * { user-select: none; -webkit-user-select: none; }
 `;
 
 class Reader {
@@ -204,7 +211,7 @@ function css(node, parent) {
 
   if (node.absolute) {
     s += `position:absolute;left:${node.x}px;top:${node.y}px;`;
-    if ((node.kind === Kind.Box || node.kind === Kind.Shader) && !node.hit && !node.scroll) s += "pointer-events:none;";
+    if ((node.kind === Kind.Box || node.kind === Kind.Shader) && !node.hit && !node.scroll && !node.gestures) s += "pointer-events:none;";
     if (wMode === Size.Fill) s += "width:100%;";
     if (hMode === Size.Fill) s += "height:100%;";
   } else if (row) {
@@ -247,6 +254,10 @@ function css(node, parent) {
   if (node.clip) s += "overflow:hidden;";
   if (node.scroll) s += "overflow-y:auto;pointer-events:auto;";
   if (node.z) s += `z-index:${node.z};`;
+  if (node.gestures) {
+    const allowed = [!(node.gestures & Gesture.PanX) && "pan-x", !(node.gestures & Gesture.PanY) && "pan-y", !(node.gestures & Gesture.Pinch) && "pinch-zoom"];
+    s += `touch-action:${allowed.filter(Boolean).join(" ") || "none"};`;
+  }
 
   if (node.kind === Kind.Box) {
     if (node.dir === Dir.Stack) s += "display:grid;";
@@ -430,6 +441,8 @@ class Patcher {
     this.pointer = [-1, -1];
     this.down = false;
     this.press = null;
+    this.pointers = new Map();
+    this.lastTap = null;
     this.swallowClick = false;
     this.preventKeys = new Set();
     this.engineMs = 0;
@@ -455,36 +468,175 @@ class Patcher {
       this.oneShots.push([e, bit]);
       this.requestFrame();
     };
+    const ancestors = function* (el, root) {
+      for (; el && el !== root; el = el.parentElement) yield el;
+    };
+    const longPressable = (press) => press.touch && press.el && !press.el.classList.contains("qui-input");
+    const canScroll = (el, fingerDy) => (fingerDy > 0 ? el.scrollTop > 0 : el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+    const unpress = (press) => {
+      clearTimeout(press.longTimer);
+      clearTimeout(press.showTimer);
+      if (press.el) flag(press.el, Flag.Pressed, false);
+      press.el = null;
+      this.swallowClick = true;
+    };
+    const longPress = (press) => {
+      if (this.press !== press || !longPressable(press)) return;
+      const el = press.el;
+      press.held = press.claimed = true;
+      unpress(press);
+      shot(el, Flag.LongPressed);
+      shot(el, Flag.RightClicked);
+    };
+    const claim = (press, totalX, totalY) => {
+      clearTimeout(press.longTimer);
+      const axis = Math.abs(totalX) > Math.abs(totalY) ? Gesture.PanX : Gesture.PanY;
+      const selecting = !press.touch && press.target.closest?.(".qui-input");
+      for (const el of selecting ? [] : ancestors(press.target, this.root)) {
+        const gestures = el.__gestures ?? 0;
+        if ((gestures & axis) && (press.touch || !(gestures & Gesture.TouchOnly))) {
+          unpress(press);
+          press.pan = el;
+          this.root.classList.add("qui-panning");
+          getSelection()?.removeAllRanges();
+          shot(el, Flag.PanStart);
+          flag(el, Flag.Panning, true);
+          return true;
+        }
+        if (press.touch && axis === Gesture.PanY && el.__scroller && canScroll(el, totalY)) return false;
+      }
+      if (press.el) {
+        press.dragging = true;
+        shot(press.el, Flag.DragStart);
+        flag(press.el, Flag.Dragging, true);
+      }
+      return true;
+    };
+    const measure = (press, state, canceled) => {
+      const { samples } = press;
+      const last = samples[samples.length - 1];
+      let first = samples.length - 1;
+      while (first > 0 && last.t - samples[first - 1].t <= VELOCITY_WINDOW_MS) first--;
+      const span = (last.t - samples[first].t) / 1000;
+      const usable = !canceled && span > 0.001;
+      state.vx = usable ? (last.x - samples[first].x) / span : 0;
+      state.vy = usable ? (last.y - samples[first].y) / span : 0;
+    };
+    const fingers = () => {
+      const [a, b] = this.pointers.values();
+      return { spread: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    };
+    const beginPinch = (press) => {
+      if (press.claimed) return;
+      for (const el of ancestors(press.target, this.root)) {
+        if (!((el.__gestures ?? 0) & Gesture.Pinch)) continue;
+        unpress(press);
+        press.claimed = true;
+        press.pinch = el;
+        press.finger = fingers();
+        flag(el, Flag.Pinching, true);
+        return;
+      }
+    };
+    const movePinch = (press) => {
+      const now = fingers();
+      const state = entry(press.pinch);
+      if (state) {
+        if (press.finger.spread > 0 && now.spread > 0) state.scale *= now.spread / press.finger.spread;
+        state.dx += now.x - press.finger.x;
+        state.dy += now.y - press.finger.y;
+      }
+      press.finger = now;
+      this.movePointer({ clientX: now.x, clientY: now.y });
+      this.requestFrame();
+    };
+    this.bindPinchWheel = () => {
+      if (this.pinchWheelBound) return;
+      this.pinchWheelBound = true;
+      this.root.addEventListener("wheel", (e) => {
+        if (!e.ctrlKey) return;
+        for (const el of ancestors(e.target, this.root)) {
+          const gestures = el.__gestures ?? 0;
+          if (!(gestures & Gesture.Pinch) || (gestures & Gesture.TouchOnly)) continue;
+          e.preventDefault();
+          const state = entry(el);
+          if (state) state.scale *= Math.exp(-Math.max(-10, Math.min(10, e.deltaY)) * 0.0095);
+          shot(el, Flag.Pinching);
+          return;
+        }
+      }, { passive: false });
+    };
     this.root.addEventListener("click", (e) => {
       if (this.swallowClick) {
         this.swallowClick = false;
         return;
       }
       const el = target(e);
-      if (el) shot(el, Flag.Clicked);
+      if (!el) return;
+      shot(el, Flag.Clicked);
+      const now = performance.now();
+      const last = this.lastTap;
+      const second = last && last.el === el && now - last.at <= DOUBLE_TAP_MS && Math.hypot(e.clientX - last.x, e.clientY - last.y) <= DOUBLE_TAP_SLOP;
+      this.lastTap = second ? null : { el, at: now, x: e.clientX, y: e.clientY };
+      if (second) shot(el, Flag.DoubleTapped);
     });
-    this.root.addEventListener("contextmenu", (e) => { const el = target(e); if (el) shot(el, Flag.RightClicked); });
+    this.root.addEventListener("contextmenu", (e) => {
+      const press = this.press;
+      if (press?.touch && (press.held || longPressable(press))) {
+        e.preventDefault();
+        longPress(press);
+        return;
+      }
+      const el = target(e);
+      if (el) shot(el, Flag.RightClicked);
+    });
     this.root.addEventListener("pointerover", (e) => { const el = target(e); if (el) flag(el, Flag.Hovered, true); });
     this.root.addEventListener("pointerout", (e) => { const el = target(e); if (el) flag(el, Flag.Hovered, false); });
     this.root.addEventListener("pointerdown", (e) => {
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.press && this.press.id !== e.pointerId && e.pointerType === "touch") {
+        if (this.pointers.size === 2) beginPinch(this.press);
+        return;
+      }
       if (e.button !== 0) return;
       this.down = true;
       this.tapped = true;
       this.swallowClick = false;
       this.movePointer(e);
       this.requestFrame();
-      const el = target(e);
+      const el = target(e) ?? null;
+      const press = { id: e.pointerId, target: e.target, el, touch: e.pointerType === "touch", startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY, dragging: false, claimed: false, samples: [{ t: e.timeStamp, x: e.clientX, y: e.clientY }] };
+      this.press = press;
       if (!el) return;
-      flag(el, Flag.Pressed, true);
-      this.press = { el, startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY, dragging: false };
+      const inScroller = press.touch && [...ancestors(e.target, this.root)].some((node) => node.__scroller);
+      if (inScroller) press.showTimer = setTimeout(() => flag(el, Flag.Pressed, true), PRESS_DELAY_MS);
+      else flag(el, Flag.Pressed, true);
+      if (longPressable(press)) press.longTimer = setTimeout(() => longPress(press), LONG_PRESS_MS);
     });
-    const release = () => {
+    const release = (e) => {
+      this.pointers.delete(e.pointerId);
+      const press = this.press;
+      if (press?.pinch) {
+        shot(press.pinch, Flag.Pinching);
+        press.pinch = null;
+      }
+      if (!press || e.pointerId !== press.id) return;
       this.down = false;
       this.requestFrame();
-      const press = this.press;
       this.press = null;
-      if (!press) return;
-      flag(press.el, Flag.Pressed, false);
+      clearTimeout(press.longTimer);
+      clearTimeout(press.showTimer);
+      if (press.el) flag(press.el, Flag.Pressed, false);
+      if (press.pan) {
+        press.samples.push({ t: e.timeStamp, x: e.clientX, y: e.clientY });
+        const state = entry(press.pan);
+        if (state) measure(press, state, e.type === "pointercancel");
+        flag(press.pan, Flag.Panning, false);
+        shot(press.pan, Flag.PanEnd);
+        this.root.classList.remove("qui-panning");
+        this.swallowClick = true;
+        return;
+      }
       if (!press.dragging) return;
       flag(press.el, Flag.Dragging, false);
       shot(press.el, Flag.DragEnd);
@@ -495,19 +647,30 @@ class Patcher {
     this.root.addEventListener("focusin", (e) => { const el = target(e); if (el) flag(el, Flag.Focused, true); });
     this.root.addEventListener("focusout", (e) => { const el = target(e); if (el) flag(el, Flag.Focused, false); });
     window.addEventListener("pointermove", (e) => {
-      this.movePointer(e);
-      const press = this.press;
-      if (!press) return;
-      this.requestFrame();
-      if (!press.dragging && Math.hypot(e.clientX - press.startX, e.clientY - press.startY) >= DRAG_THRESHOLD) {
-        press.dragging = true;
-        shot(press.el, Flag.DragStart);
-        flag(press.el, Flag.Dragging, true);
+      const tracked = this.pointers.get(e.pointerId);
+      if (tracked) {
+        tracked.x = e.clientX;
+        tracked.y = e.clientY;
       }
-      const state = entry(press.el);
-      if (press.dragging && state) {
+      const press = this.press;
+      if (press?.pinch) {
+        if (tracked && this.pointers.size === 2) movePinch(press);
+        return;
+      }
+      if (press && e.pointerId !== press.id) return;
+      this.movePointer(e);
+      if (!press) return;
+      press.samples.push({ t: e.timeStamp, x: e.clientX, y: e.clientY });
+      if (press.samples.length > 32) press.samples.shift();
+      const totalX = e.clientX - press.startX, totalY = e.clientY - press.startY;
+      if (!press.claimed && Math.hypot(totalX, totalY) >= (press.touch ? TOUCH_SLOP : DRAG_THRESHOLD)) press.claimed = claim(press, totalX, totalY);
+      const owner = press.pan ?? (press.dragging ? press.el : null);
+      if (owner || press.el) this.requestFrame();
+      const state = owner ? entry(owner) : null;
+      if (state) {
         state.dx += e.clientX - press.x;
         state.dy += e.clientY - press.y;
+        if (press.pan) measure(press, state, false);
       }
       press.x = e.clientX;
       press.y = e.clientY;
@@ -673,7 +836,7 @@ class Patcher {
   entryFor(node, el) {
     let entry = this.entries.get(node.key);
     if (!entry) {
-      entry = { lo: node.lo, hi: node.hi, el, flags: 0, first: 0, count: 0, dx: 0, dy: 0 };
+      entry = { lo: node.lo, hi: node.hi, el, flags: 0, first: 0, count: 0, dx: 0, dy: 0, vx: 0, vy: 0, scale: 1 };
       this.entries.set(node.key, entry);
     }
     return entry;
@@ -692,6 +855,11 @@ class Patcher {
       if (node.role === Role.Image) el.setAttribute("role", "img");
       if (node.hit || node.kind === Kind.Button || node.kind === Kind.Input) el.setAttribute("data-qh", "");
       else el.removeAttribute("data-qh");
+      el.__gestures = node.gestures ?? 0;
+      el.__scroller = !!node.scroll || node.kind === Kind.List || (node.kind === Kind.Input && !!node.multiline);
+      if (node.gestures) el.setAttribute("data-qp", "");
+      else el.removeAttribute("data-qp");
+      if (node.gestures & Gesture.Pinch) this.bindPinchWheel();
       if (node.kind === Kind.Shader) this.patchShader(el, node);
       if (node.kind === Kind.Input) this.patchField(el, node);
     }
@@ -699,7 +867,7 @@ class Patcher {
       el.__autofocused = true;
       el.focus();
     }
-    if (node.hit || node.kind === Kind.Button || node.kind === Kind.List || node.kind === Kind.Input) this.entryFor(node, el);
+    if (node.hit || node.gestures || node.kind === Kind.Button || node.kind === Kind.List || node.kind === Kind.Input) this.entryFor(node, el);
     if (node.kind === Kind.List) this.patchList(el, node);
     else this.reconcile(el, node, null, null);
     if (node.scrollTo !== undefined) el.scrollTop = node.scrollTo;
@@ -845,6 +1013,7 @@ class Patcher {
       view.setUint32(at + 8, entry.flags, true);
       view.setUint32(at + 12, entry.first, true);
       view.setUint32(at + 16, entry.count, true);
+      view.setFloat32(at + 20, entry.scale, true);
       const rect = entry.el.getBoundingClientRect();
       view.setFloat32(at + 24, rect.left - origin.left, true);
       view.setFloat32(at + 28, rect.top - origin.top, true);
@@ -852,7 +1021,11 @@ class Patcher {
       view.setFloat32(at + 36, rect.height, true);
       view.setFloat32(at + 40, entry.dx, true);
       view.setFloat32(at + 44, entry.dy, true);
+      const panning = entry.flags & (Flag.Panning | Flag.PanEnd);
+      view.setFloat32(at + 48, panning ? entry.vx : 0, true);
+      view.setFloat32(at + 52, panning ? entry.vy : 0, true);
       entry.dx = entry.dy = 0;
+      entry.scale = 1;
     }
     if (this.oneShots.length || hadKeys) {
       for (const [entry, bit] of this.oneShots) entry.flags &= ~bit;
