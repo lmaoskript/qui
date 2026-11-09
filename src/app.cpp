@@ -789,6 +789,7 @@ struct qui_app {
   }
 
   void step_smooth(float elapsed) {
+    if (elapsed <= 0) return;
     float step = smooth_left * (1 - std::exp(-kSmoothRate * elapsed));
     smooth_left -= step;
     const bool done = std::abs(smooth_left) < 0.5f;
