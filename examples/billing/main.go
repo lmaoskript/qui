@@ -89,6 +89,7 @@ type app struct {
 	drawerIndex   int
 	drawerT       float32
 	drawerShown   drawerKind
+	nav           qui.Drawer
 }
 
 func clamp(v, lo, hi float32) float32 { return max(lo, min(hi, v)) }
@@ -194,6 +195,7 @@ func (a *app) icon(v view, c qui.Color) {
 }
 
 func (a *app) open(v view) {
+	a.nav.Open = false
 	if a.view != v {
 		a.view = v
 		a.viewFade = 0
@@ -201,36 +203,39 @@ func (a *app) open(v view) {
 	}
 }
 
+func (a *app) navigation() {
+	ui := a.ui
+	ui.Row(qui.Style{W: qui.Fill(), Gap: 10, Align: qui.Center, Pad: qui.Edges{Left: 8, Right: 8, Bottom: 16}}, func() {
+		ui.Stack(qui.Style{W: qui.Px(24), H: qui.Px(24), Radius: 6, Clip: true, Gradient: qui.Gradient{From: accentHot, To: qui.RGB(70, 60, 200), Angle: 145}}, func() {
+			ui.Column(qui.Style{Absolute: true, X: 11, Y: 11, W: qui.Px(24), H: qui.Px(24), Radius: 6, Bg: surface}, func() {})
+		})
+		ui.Text("Sable Cloud, Inc.", qui.TextStyle{Size: 13.5, Bold: true, Color: ink, Ellipsis: true, W: qui.Fill()})
+	})
+	for i, item := range views {
+		v := view(i)
+		on := a.view == v
+		fg, ic, bg := muted, subtle, qui.RGBA(0, 0, 0, 1)
+		if on {
+			fg, ic, bg = ink, accentHot, qui.RGBA(255, 255, 255, 16)
+		} else if a.hover[item.name] {
+			fg, ic, bg = ink, muted, qui.RGBA(255, 255, 255, 8)
+		}
+		ui.Stack(qui.Style{W: qui.Fill(), Key: item.name}, func() {
+			r := ui.Button(item.name, qui.Style{Key: "b", W: qui.Fill(), Radius: 7, Bg: bg, Fg: fg, Justify: qui.Between, Pad: qui.Edges{Top: 8, Bottom: 8, Left: 36, Right: 8}})
+			a.hover[item.name] = r.Hovered
+			if r.Clicked {
+				a.open(v)
+			}
+			ui.Row(qui.Style{Absolute: true, X: 10, Y: 9}, func() { a.icon(v, ic) })
+		})
+	}
+	ui.Column(qui.Style{W: qui.Fill(), H: qui.Fill()}, func() {})
+	ui.Text("Sable is fictional. Every number here is generated.", qui.TextStyle{Size: 11.5, Color: subtle, W: qui.Fill()})
+}
+
 func (a *app) sidebar() {
 	ui := a.ui
-	ui.Column(qui.Style{W: qui.Px(232), H: qui.Fill(), Pad: qui.XY(12, 16), Gap: 2, Role: qui.RoleNav}, func() {
-		ui.Row(qui.Style{W: qui.Fill(), Gap: 10, Align: qui.Center, Pad: qui.Edges{Left: 8, Right: 8, Bottom: 16}}, func() {
-			ui.Stack(qui.Style{W: qui.Px(24), H: qui.Px(24), Radius: 6, Clip: true, Gradient: qui.Gradient{From: accentHot, To: qui.RGB(70, 60, 200), Angle: 145}}, func() {
-				ui.Column(qui.Style{Absolute: true, X: 11, Y: 11, W: qui.Px(24), H: qui.Px(24), Radius: 6, Bg: surface}, func() {})
-			})
-			ui.Text("Sable Cloud, Inc.", qui.TextStyle{Size: 13.5, Bold: true, Color: ink, Ellipsis: true, W: qui.Fill()})
-		})
-		for i, item := range views {
-			v := view(i)
-			on := a.view == v
-			fg, ic, bg := muted, subtle, qui.RGBA(0, 0, 0, 1)
-			if on {
-				fg, ic, bg = ink, accentHot, qui.RGBA(255, 255, 255, 16)
-			} else if a.hover[item.name] {
-				fg, ic, bg = ink, muted, qui.RGBA(255, 255, 255, 8)
-			}
-			ui.Stack(qui.Style{W: qui.Fill(), Key: item.name}, func() {
-				r := ui.Button(item.name, qui.Style{Key: "b", W: qui.Fill(), Radius: 7, Bg: bg, Fg: fg, Justify: qui.Between, Pad: qui.Edges{Top: 8, Bottom: 8, Left: 36, Right: 8}})
-				a.hover[item.name] = r.Hovered
-				if r.Clicked {
-					a.open(v)
-				}
-				ui.Row(qui.Style{Absolute: true, X: 10, Y: 9}, func() { a.icon(v, ic) })
-			})
-		}
-		ui.Column(qui.Style{W: qui.Fill(), H: qui.Fill()}, func() {})
-		ui.Text("Sable is fictional. Every number here is generated.", qui.TextStyle{Size: 11.5, Color: subtle, W: qui.Fill()})
-	})
+	ui.Column(qui.Style{W: qui.Px(232), H: qui.Fill(), Pad: qui.XY(12, 16), Gap: 2, Role: qui.RoleNav}, a.navigation)
 	ui.Column(qui.Style{W: qui.Px(1), H: qui.Fill(), Bg: line}, func() {})
 }
 
@@ -254,7 +259,13 @@ func (a *app) tabbar() {
 func (a *app) topbar() {
 	ui := a.ui
 	ui.Row(qui.Style{W: qui.Fill(), H: qui.Px(56), Align: qui.Center, Gap: 12, Pad: qui.XY(a.pagePad(), 0)}, func() {
+		if a.narrow && ui.Button("☰", qui.Style{Key: "menu", W: qui.Px(36), H: qui.Px(36), Pad: qui.All(0), Bg: qui.RGBA(0, 0, 0, 1), Fg: ink, Label: "Open navigation"}).Clicked {
+			a.nav.Open = true
+		}
 		width := min(400, a.w-160)
+		if a.narrow {
+			width = max(120, width-48)
+		}
 		r := ui.Input("search", &a.search, qui.InputOptions{Placeholder: "Search payments and customers", Size: 13.5, Style: qui.Style{W: qui.Px(width), Bg: surface, Border: line, Radius: 7, Pad: qui.XY(12, 7), Fg: ink}})
 		if r.Submitted && a.view != viewPayments && a.view != viewCustomers {
 			a.open(viewPayments)
@@ -334,34 +345,42 @@ func (a *app) frame() {
 		a.drawer = drawerNone
 	}
 	ui.Stack(qui.Style{W: qui.Fill(), H: qui.Fill(), Bg: page}, func() {
-		ui.Row(qui.Style{W: qui.Fill(), H: qui.Fill()}, func() {
-			if !a.narrow {
+		if a.narrow {
+			ui.Drawer(&a.nav, qui.DrawerOptions{Size: min(280, a.w-56), Style: qui.Style{Bg: surface, Pad: qui.XY(12, 16), Gap: 2, Role: qui.RoleNav}}, a.mainArea, a.navigation)
+		} else {
+			a.nav = qui.Drawer{}
+			ui.Row(qui.Style{W: qui.Fill(), H: qui.Fill()}, func() {
 				a.sidebar()
-			}
-			ui.Column(qui.Style{W: qui.Fill(), H: qui.Fill(), Role: qui.RoleMain}, func() {
-				a.topbar()
-				ui.Column(qui.Style{Key: views[a.view].name, W: qui.Fill(), H: qui.Fill(), Opacity: max(0.001, easeOut(a.viewFade))}, func() {
-					switch a.view {
-					case viewHome:
-						a.scrollPage(a.home)
-					case viewBalances:
-						a.scrollPage(a.balances)
-					case viewPayments:
-						a.payments()
-					case viewCustomers:
-						a.customers()
-					case viewSubscriptions:
-						a.scrollPage(a.subscriptions)
-					case viewInvoices:
-						a.invoices()
-					}
-				})
-				if a.narrow {
-					a.tabbar()
-				}
+				a.mainArea()
 			})
-		})
+		}
 		a.overlay()
+	})
+}
+
+func (a *app) mainArea() {
+	ui := a.ui
+	ui.Column(qui.Style{W: qui.Fill(), H: qui.Fill(), Role: qui.RoleMain}, func() {
+		a.topbar()
+		ui.Column(qui.Style{Key: views[a.view].name, W: qui.Fill(), H: qui.Fill(), Opacity: max(0.001, easeOut(a.viewFade))}, func() {
+			switch a.view {
+			case viewHome:
+				a.scrollPage(a.home)
+			case viewBalances:
+				a.scrollPage(a.balances)
+			case viewPayments:
+				a.payments()
+			case viewCustomers:
+				a.customers()
+			case viewSubscriptions:
+				a.scrollPage(a.subscriptions)
+			case viewInvoices:
+				a.invoices()
+			}
+		})
+		if a.narrow {
+			a.tabbar()
+		}
 	})
 }
 
