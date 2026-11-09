@@ -57,7 +57,7 @@ func glslArray(name string, values *[chartPoints]float32) string {
 	for i, v := range values {
 		items[i] = fmt.Sprintf("%.4f", v)
 	}
-	return fmt.Sprintf("const float %s[%d]=float[%d](%s);\n", name, chartPoints, chartPoints, strings.Join(items, ","))
+	return fmt.Sprintf("float %s[%d]=float[%d](%s);\n", name, chartPoints, chartPoints, strings.Join(items, ","))
 }
 
 const chartBody = `
