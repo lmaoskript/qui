@@ -231,15 +231,15 @@ func main() {
 	if len(os.Args) > 1 {
 		root = os.Args[1]
 	}
-	s := parse(filepath.Join(root, "spec.txt"))
+	s := parse(filepath.Join(root, "tools/gen/spec.txt"))
 	formatted, err := format.Source([]byte(goSource(s)))
 	if err != nil {
 		log.Fatal(err)
 	}
 	files := map[string]string{
-		"wire.gen.hpp":    cpp(s),
-		"wire_gen.go":     string(formatted),
-		"web/wire.gen.js": js(s),
+		"src/wire.gen.hpp": cpp(s),
+		"wire_gen.go":      string(formatted),
+		"web/wire.gen.js":  js(s),
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {

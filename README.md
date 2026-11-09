@@ -176,7 +176,7 @@ Check your work without opening a window. These run from the repo root and exit 
 
 When changing the framework itself:
 
-- To add a node kind, op or token, edit `spec.txt` and run `go run ./tools/gen`. Never hand-edit the generated `wire_gen.go`, `wire.gen.hpp` or `web/wire.gen.js`.
+- To add a node kind, op or token, edit `tools/gen/spec.txt` and run `go run ./tools/gen`. Never hand-edit the generated `wire_gen.go`, `src/wire.gen.hpp` or `web/wire.gen.js`.
 - Rendering changes need checking on `QUI_BACKEND=gl`, `QUI_BACKEND=cpu` and in a browser.
 
 ### Repo map
@@ -184,13 +184,14 @@ When changing the framework itself:
 | Path | What it is |
 | --- | --- |
 | `qui.go`, `frame_native.go`, `frame_js.go` | Go API and its native and wasm frame loops |
-| `qui.hpp`, `qui_c.h` | C++ API and the C ABI |
-| `engine.cpp` | Decodes frames, runs layout, builds paint lists and damage |
-| `app.cpp`, `input.cpp` | Window, events, offscreen mode and text editing |
-| `gl.cpp`, `cpu.cpp` | GPU and CPU renderers |
-| `font_manager.cpp`, `text_shaper.cpp` | Fonts, glyph cache and shaping |
+| `src/` | Native C++ engine and its cgo bridge; the Go package `qui/src` is internal plumbing |
+| `src/qui.hpp`, `src/qui_c.h` | C++ API and the C ABI |
+| `src/engine.cpp` | Decodes frames, runs layout, builds paint lists and damage |
+| `src/app.cpp`, `src/input.cpp` | Window, events, offscreen mode and text editing |
+| `src/gl.cpp`, `src/cpu.cpp` | GPU and CPU renderers |
+| `src/font_manager.cpp`, `src/text_shaper.cpp` | Fonts, glyph cache and shaping |
 | `web/qui.js` | Browser DOM patcher |
-| `spec.txt`, `tools/gen` | Wire format source and code generator |
+| `tools/gen` (`spec.txt`) | Wire format source and code generator |
 | `cmd/qui` | The `qui build` command |
 | `sys/` | Linux install, services and capture |
 | `examples/` | Showcase, landing page and billing dashboard |

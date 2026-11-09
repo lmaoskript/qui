@@ -317,4 +317,4 @@ Any of the first three variables runs the app offscreen for a few frames and exi
 
 Do not assume these exist: images, right-to-left paragraphs (mixed text orders correctly, but the base direction is always left-to-right), global shortcuts. On the web, list spacers use the estimate, so the scrollbar can shift when real heights differ.
 
-To add a node kind, op or token, edit `spec.txt` and run `go run ./tools/gen`; `docs/wire.md` documents the format.
+To add a node kind, op or token, edit `tools/gen/spec.txt` and run `go run ./tools/gen`; `docs/wire.md` documents the format.

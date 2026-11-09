@@ -1,6 +1,6 @@
 //go:build cgo && android
 
-package qui
+package native
 
 import "C"
 

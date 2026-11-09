@@ -2,7 +2,7 @@
 
 An app describes each frame as one flat byte stream. The native engine and the
 browser DOM patcher both consume this stream, so a language only needs an
-encoder to get every backend. Constants live in `spec.txt`.
+encoder to get every backend. Constants live in `tools/gen/spec.txt`.
 
 All values are little-endian. `str` is a `u32` byte length followed by UTF-8.
 

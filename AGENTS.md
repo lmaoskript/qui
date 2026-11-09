@@ -30,7 +30,7 @@ There is no test suite, so verify by running things (see [Verifying](#verifying)
 ```
 app code
   -> qui.go or qui.hpp encode one flat byte stream
-  -> native:  frame_native.go -> app.cpp (window, events) -> engine.cpp (decode, layout, paint, damage) -> gl.cpp or cpu.cpp
+  -> native:  frame_native.go -> src/native.go (cgo) -> src/app.cpp (window, events) -> src/engine.cpp (decode, layout, paint, damage) -> src/gl.cpp or src/cpu.cpp
   -> browser: frame_js.go -> web/qui.js (patches real DOM)
 ```
 
@@ -40,18 +40,18 @@ Input results come back to the app on the next frame as a `Response`. The format
 
 To add a style property, op or node kind, touch these in order:
 
-1. `spec.txt`: add it and bump `version`.
-2. Run `go run ./tools/gen`. Never hand-edit `wire_gen.go`, `wire.gen.hpp` or `web/wire.gen.js`.
-3. `qui.go` and `qui.hpp`: encode it. Struct field order in `qui.hpp` is public API, because C++ designated initializers must follow it.
-4. `engine.hpp` and `engine.cpp`: decode and paint it.
-5. `gl.cpp` and `cpu.cpp`: draw it.
+1. `tools/gen/spec.txt`: add it and bump `version`.
+2. Run `go run ./tools/gen`. Never hand-edit `wire_gen.go`, `src/wire.gen.hpp` or `web/wire.gen.js`.
+3. `qui.go` and `src/qui.hpp`: encode it. Struct field order in `src/qui.hpp` is public API, because C++ designated initializers must follow it.
+4. `src/engine.hpp` and `src/engine.cpp`: decode and paint it.
+5. `src/gl.cpp` and `src/cpu.cpp`: draw it.
 6. `web/qui.js`: apply it to the DOM.
 7. `docs/wire.md` and the field lists in `SKILL.md`.
 
 Rules that are easy to break:
 
 - **Damage:** anything that changes pixels must be visible to `Engine::swap_and_damage` in `engine.cpp`, or the frame is skipped. Shader uniforms once went stale this way.
-- **New C++ files:** start them with `//go:build cgo` (in `sys/`, `//go:build linux && !android && cgo`) or the wasm build fails, and add them to `CMakeLists.txt`.
+- **New C++ files:** start them with `//go:build cgo` (in `sys/`, `//go:build linux && !android && cgo`) or the wasm build fails, keep them in `src/` (cgo only compiles C++ in the Go package folder) and add them to `CMakeLists.txt`.
 - **Parity:** layout changes in `engine.cpp` usually need matching CSS in `web/qui.js`. Native and web should look the same.
 - **Real DOM:** web output must stay real elements for accessibility. Never replace it with a canvas.
 - **Dependencies:** library packages use only the standard library. `esbuild` and `brotli` are for `cmd/qui` only.
