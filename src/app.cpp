@@ -31,7 +31,7 @@ using namespace qui;
 
 constexpr float kDragThreshold = 4, kTouchSlop = 8;
 constexpr size_t kResultsHeader = 64, kResultsSlot = 56;
-constexpr float kWheelPixels = 48;
+constexpr float kWheelPixels = 48, kSmoothRate = 16;
 constexpr double kCaretBlink = 0.53;
 constexpr double kLongPress = 0.5, kDoubleTap = 0.3, kPressDelay = 0.08, kVelocityWindow = 0.1, kFlingStep = 1.0 / 60.0;
 constexpr float kDoubleTapSlop = 24, kFlingMin = 120, kFlingStop = 24, kFlingDecay = 3, kFlingMax = 6000;
@@ -263,6 +263,10 @@ struct qui_app {
   uint64_t gesture_owner = 0, pan_start = 0, pan_end = 0, pinch_once = 0, long_pressed = 0, double_tapped = 0, last_tap_id = 0, fling_id = 0;
   float vel_x = 0, vel_y = 0, pinch_scale = 1, pinch_spread = 0, last_tap_x = 0, last_tap_y = 0, fling_v = 0;
   double long_press_at = kNever, press_show_at = 0, last_tap_at = -1, fling_next = 0, fling_last = 0, drive_clock = 0;
+  double smooth_next = 0, smooth_last = 0;
+  uint64_t smooth_id = 0;
+  float smooth_left = 0;
+  bool smooth_wheel = false;
 
   double next_tick = 0, blink_at = 0;
   double last_frame_time = 0;
@@ -744,7 +748,32 @@ struct qui_app {
         return;
       }
     }
-    if (const uint64_t id = hit_test(pointer_x, pointer_y, true)) scroll_content(id, -amount * kWheelPixels);
+    const uint64_t id = hit_test(pointer_x, pointer_y, true);
+    if (!id) return;
+    const float delta = -amount * kWheelPixels;
+    // Touchpads send fractional steps at a high rate and already feel smooth.
+    if (!smooth_wheel || amount != std::round(amount)) {
+      smooth_id = 0;
+      scroll_content(id, delta);
+      return;
+    }
+    if (id != smooth_id || (smooth_left > 0) != (delta > 0)) smooth_left = 0;
+    if (!smooth_id || id != smooth_id) smooth_last = smooth_next = clock();
+    smooth_id = id;
+    smooth_left += delta;
+    dirty = true;
+  }
+
+  void step_smooth(float elapsed) {
+    float step = smooth_left * (1 - std::exp(-kSmoothRate * elapsed));
+    smooth_left -= step;
+    const bool done = std::abs(smooth_left) < 0.5f;
+    if (done) step += smooth_left;
+    if (!scroll_content(smooth_id, step) || done) {
+      smooth_id = 0;
+      smooth_left = 0;
+    }
+    dirty = true;
   }
 
   void begin_track(double time, bool touch) {
@@ -873,6 +902,11 @@ struct qui_app {
       fling_last = t;
       fling_next = t + (cpu ? kFlingStep : 0);
     }
+    if (smooth_id && t >= smooth_next) {
+      step_smooth(static_cast<float>(std::min(t - smooth_last, 0.05)));
+      smooth_last = t;
+      smooth_next = t + (cpu ? kFlingStep : 0);
+    }
   }
 
   bool note_tap(double time, uint64_t id) {
@@ -904,7 +938,7 @@ struct qui_app {
     const float x = finger.x * logical_w, y = finger.y * logical_h;
     fingers.push_back({finger.fingerID, x, y});
     const bool stopped_fling = fling_id != 0;
-    fling_id = 0;
+    fling_id = smooth_id = 0;
     if (fingers.size() > 1) {
       if (fingers.size() > 2 || (track != Track::Pending && track != Track::Press)) return;
       const auto link = std::find_if(chain.begin(), chain.end(), [](const Link &l) { return l.gestures & GesturePinch; });
@@ -1025,7 +1059,7 @@ struct qui_app {
         to_logical(e.button.x, e.button.y, pointer_x, pointer_y);
         update_hover();
         if (e.button.button == SDL_BUTTON_LEFT) {
-          fling_id = 0;
+          fling_id = smooth_id = 0;
           pointer_down = true;
           pointer_tapped = true;
           if (const HitEntry *bar = scrollbar_at(pointer_x, pointer_y)) {
@@ -1306,6 +1340,7 @@ struct qui_app {
       if (blinking) deadline = std::min(deadline, blink_at);
       if (press_show_at > 0) deadline = std::min(deadline, press_show_at);
       if (fling_id) deadline = std::min(deadline, fling_next);
+      if (smooth_id) deadline = std::min(deadline, smooth_next);
       bool got = false;
       if (std::isfinite(deadline)) {
         got = SDL_WaitEventTimeout(&event, static_cast<Sint32>(std::ceil(std::max(0.0, (deadline - now()) * 1000.0))));
@@ -1529,6 +1564,12 @@ void qui_consume_back(qui_app *app) { app->back_consumed = true; }
 
 void qui_set_clipboard(qui_app *app, const char *text) { app->set_clipboard(text ? text : ""); }
 
+void qui_set_smooth_scroll(qui_app *app, int on) {
+  if (!app) return;
+  app->smooth_wheel = on != 0;
+  if (!on) app->smooth_id = 0;
+}
+
 namespace {
 void picked_files(void *userdata, const char *const *files, int) {
   auto *app = static_cast<qui_app *>(userdata);
@@ -1591,7 +1632,7 @@ void qui_close(qui_app *app) {
 
 const uint8_t *qui_frame_begin(qui_app *app, size_t *len) {
   if (app->headless) {
-    if (app->frames >= app->total_frames() && !app->fling_id) {
+    if (app->frames >= app->total_frames() && !app->fling_id && !app->smooth_id) {
       app->finish();
       return nullptr;
     }

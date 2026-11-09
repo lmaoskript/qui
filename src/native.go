@@ -62,6 +62,14 @@ func (a *App) SetClipboard(text string) {
 	C.qui_set_clipboard(a.app, ctext)
 }
 
+func (a *App) SetSmoothScroll(on bool) {
+	v := C.int(0)
+	if on {
+		v = 1
+	}
+	C.qui_set_smooth_scroll(a.app, v)
+}
+
 func (a *App) Submit(buf []byte) {
 	C.qui_frame_end(a.app, (*C.uint8_t)(unsafe.Pointer(unsafe.SliceData(buf))), C.size_t(len(buf)))
 }

@@ -239,6 +239,8 @@ ui.Tooltip(row.Hovered, "Copy link")
 
 `SetClipboard(text)` (C++ `set_clipboard`) puts text on the system clipboard, which a context menu's "Copy" needs; browsers only allow it inside a click.
 
+`SetSmoothScroll(true)` eases mouse wheel steps (native; browsers smooth the wheel themselves) and `SetReduceMotion(true)` makes drawers snap. C++: `set_smooth_scroll`, `set_reduce_motion`.
+
 `Modal` centers a panel over a scrim, `Popup` places a panel at window coordinates (take them from `PointerX/PointerY` on a right click) and keeps it on screen when it has a `W`, and `Tooltip` follows the pointer. C++: `ui.modal(key, style, body)`, `ui.popup(key, x, y, style, body)`, `ui.tooltip(show, text)`.
 
 ## Gestures

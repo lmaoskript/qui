@@ -169,6 +169,7 @@ type Ui struct {
 	styleClasses map[string]Style
 	textClasses  map[string]TextStyle
 	started      bool
+	reduceMotion bool
 	nodes        int
 	stats        Stats
 }
@@ -209,6 +210,9 @@ func (u *Ui) Dpr() float32      { return u.header(16) }
 func (u *Ui) Dt() float32       { return u.header(20) }
 func (u *Ui) PointerX() float32 { return u.header(24) }
 func (u *Ui) PointerY() float32 { return u.header(28) }
+
+// SetReduceMotion makes drawers snap instead of sliding.
+func (u *Ui) SetReduceMotion(on bool) { u.reduceMotion = on }
 
 // PointerDown reports whether the primary pointer button is held anywhere, or
 // was pressed since the last frame, so a tap shorter than a frame still counts.

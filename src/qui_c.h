@@ -36,6 +36,10 @@ const char *qui_picked_file(qui_app *app);
 /* Puts UTF-8 text on the system clipboard. */
 void qui_set_clipboard(qui_app *app, const char *text);
 
+/* Eases mouse wheel steps toward their target instead of jumping. Off by
+ * default. */
+void qui_set_smooth_scroll(qui_app *app, int on);
+
 /* Blocks until a frame is needed. Returns the results table, or NULL on quit.
  * The pointer stays valid until the next qui_frame_begin. */
 const uint8_t *qui_frame_begin(qui_app *app, size_t *len);

@@ -46,6 +46,9 @@ func (u *Ui) PickedFiles() []string {
 // SetClipboard puts text on the system clipboard.
 func (u *Ui) SetClipboard(text string) { u.app.SetClipboard(text) }
 
+// SetSmoothScroll eases mouse wheel steps toward their target. Off by default.
+func (u *Ui) SetSmoothScroll(on bool) { u.app.SetSmoothScroll(on) }
+
 func (u *Ui) submit() { u.app.Submit(u.buf) }
 
 func (u *Ui) wait() []byte { return u.app.Wait() }

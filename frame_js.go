@@ -57,6 +57,9 @@ func (u *Ui) SetClipboard(text string) {
 	}
 }
 
+// SetSmoothScroll does nothing in the browser, which smooths the wheel itself.
+func (u *Ui) SetSmoothScroll(bool) {}
+
 func (u *Ui) submit() {
 	if len(u.buf) > u.outCap {
 		u.outCap = len(u.buf) * 2

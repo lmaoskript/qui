@@ -133,6 +133,10 @@ func (u *Ui) updateDrawer(d *Drawer, o *DrawerOptions, r *Response, size float32
 	if d.Open {
 		target = 1
 	}
+	if u.reduceMotion {
+		d.position, d.speed = target, 0
+		return
+	}
 	if d.position == target && d.speed == 0 {
 		return
 	}

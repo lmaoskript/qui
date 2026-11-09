@@ -222,6 +222,10 @@ class Ui {
     return out;
   }
   void set_clipboard(const std::string &text) { qui_set_clipboard(app_, text.c_str()); }
+  // Eases mouse wheel steps. Browsers smooth the wheel themselves.
+  void set_smooth_scroll(bool on) { qui_set_smooth_scroll(app_, on ? 1 : 0); }
+  // Makes drawers snap instead of sliding.
+  void set_reduce_motion(bool on) { reduce_motion_ = on; }
   void set_theme(uint8_t theme) { theme_ = theme; }
 
   constexpr static Color token(uint8_t id) { return Color(id) << 24; }
@@ -593,6 +597,11 @@ class Ui {
       return;
     }
     const float target = d.open ? 1.f : 0.f;
+    if (reduce_motion_) {
+      d.position = target;
+      d.speed = 0;
+      return;
+    }
     if (d.position == target && d.speed == 0) return;
     const float step = std::min(dt(), 1.f / 30);
     d.speed += (spring * spring * (target - d.position) - 2 * spring * d.speed) * step;
@@ -899,6 +908,7 @@ class Ui {
   qui_app *app_;
   const uint8_t *res_ = nullptr;
   bool started_ = false;
+  bool reduce_motion_ = false;
   uint8_t theme_ = 0;
   size_t image_at_ = 0;
   std::vector<uint8_t> pending_images_;
