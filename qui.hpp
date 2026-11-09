@@ -4,6 +4,7 @@
 #include "wire.gen.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
@@ -124,6 +125,23 @@ struct InputOptions {
   std::string_view placeholder{};
   float size = 0;
   bool mono = false, multiline = false, enter_submits = false, password = false, autofocus = false, focus = false;
+};
+
+enum class Side : uint8_t { Left, Right, Top, Bottom };
+
+// State of a panel that slides over other content. Keep one per drawer and set
+// open to show or hide it from code.
+struct Drawer {
+  bool open = false;
+  float position = 0, speed = 0;
+  bool held = false, started = false;
+};
+
+struct DrawerOptions {
+  Side side = Side::Left;
+  float size = 0;
+  Style style{};
+  std::string_view key{};
 };
 
 inline void set_app_id(const char *id) { qui_set_app_id(id); }
@@ -289,7 +307,79 @@ class Ui {
     return result;
   }
 
+  // Fills its parent with content and slides panel over it. A touch swipe on
+  // content opens it; a swipe, a tap on the scrim or Escape closes it.
+  template <class C, class P>
+  Response drawer(Drawer &d, const DrawerOptions &options, C &&content, P &&panel) {
+    const float size = options.size > 0 ? options.size : 280;
+    const bool horizontal = options.side == Side::Left || options.side == Side::Right;
+    Style root{};
+    root.w = root.h = fill();
+    root.clip = true;
+    root.key = options.key;
+    root.gestures = (horizontal ? GesturePanX : GesturePanY) | GestureTouchOnly;
+    const uint64_t id = open(wire::KindBox, options.key);
+    u8_op(wire::OpDir, wire::DirStack);
+    emit_style(root);
+    const Response result = lookup(id);
+    update_drawer(d, options, result, size, horizontal);
+
+    stack_.push_back({id, 0});
+    column({.w = fill(), .h = fill(), .key = "content"}, content);
+    if (d.position > 0) {
+      if (column({.w = fill(), .h = fill(), .absolute = true, .bg = Scrim, .opacity = d.position, .hit = true, .key = "scrim"}, [] {}).clicked) d.open = false;
+      const float parent_w = result.found ? result.w : width(), parent_h = result.found ? result.h : height();
+      const float travel = size * (d.position - 1);
+      Style s = options.style;
+      s.key = "panel";
+      s.absolute = true;
+      s.hit = true;
+      s.w = horizontal ? px(size) : fill();
+      s.h = horizontal ? fill() : px(size);
+      s.x = options.side == Side::Left ? travel : options.side == Side::Right ? parent_w - size - travel : 0;
+      s.y = options.side == Side::Top ? travel : options.side == Side::Bottom ? parent_h - size - travel : 0;
+      column(s, panel);
+    }
+    stack_.pop_back();
+    u8(wire::OpEnd);
+    return result;
+  }
+
  private:
+  void update_drawer(Drawer &d, const DrawerOptions &options, const Response &r, float size, bool horizontal) {
+    constexpr float spring = 20, fling_speed = 1.5f;
+    const auto clamp01 = [](float v) { return std::min(std::max(v, 0.f), 1.f); };
+    if (!d.started) {
+      d.started = true;
+      if (d.open) d.position = 1;
+    }
+    const float direction = options.side == Side::Right || options.side == Side::Bottom ? -1.f : 1.f;
+    const float delta = horizontal ? r.dx : r.dy, velocity = horizontal ? r.vx : r.vy;
+    if (r.panning || r.pan_end) d.position = clamp01(d.position + direction * delta / size);
+    d.held = r.panning;
+    if (r.pan_end) {
+      const float fling = direction * velocity / size;
+      d.open = fling > fling_speed ? true : fling < -fling_speed ? false : d.position > 0.5f;
+      d.speed = fling;
+    }
+    if (d.open && key_pressed(KeyEscape)) d.open = false;
+    if (d.held) {
+      d.speed = 0;
+      return;
+    }
+    const float target = d.open ? 1.f : 0.f;
+    if (d.position == target && d.speed == 0) return;
+    const float step = std::min(dt(), 1.f / 30);
+    d.speed += (spring * spring * (target - d.position) - 2 * spring * d.speed) * step;
+    d.position = clamp01(d.position + d.speed * step);
+    if (std::abs(target - d.position) < 0.001f && std::abs(d.speed) < 0.02f) {
+      d.position = target;
+      d.speed = 0;
+      return;
+    }
+    wake();
+  }
+
   struct Scope {
     uint64_t id;
     uint32_t index;
