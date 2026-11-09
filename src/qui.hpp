@@ -105,6 +105,7 @@ struct Response {
   std::string_view error{};
 };
 
+inline constexpr uint8_t FitCover = wire::FitCover, FitContain = wire::FitContain, FitStretch = wire::FitStretch;
 inline constexpr uint8_t SpanBold = wire::SpanBold, SpanMono = wire::SpanMono, SpanItalic = wire::SpanItalic, SpanUnderline = wire::SpanUnderline, SpanStrike = wire::SpanStrike;
 
 struct Span {
