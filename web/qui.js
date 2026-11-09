@@ -636,6 +636,12 @@ class Patcher {
         if (this.pointers.size === 2) beginPinch(this.press);
         return;
       }
+      if (e.button === 3 || e.button === 4) {
+        e.preventDefault();
+        this.keys.push(e.button === 3 ? Key.Back : Key.Forward, 0);
+        this.requestFrame();
+        return;
+      }
       if (e.button !== 0) return;
       this.down = true;
       this.tapped = true;

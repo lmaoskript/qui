@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 12
+version 13
 
 kind Box 0
 kind Text 1
@@ -139,6 +139,8 @@ key LeftAlt 1034
 key RightAlt 1035
 key LeftMeta 1036
 key RightMeta 1037
+key Back 1040
+key Forward 1041
 
 mod Shift 1
 mod Ctrl 2

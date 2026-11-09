@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 12
+const wireVersion = 13
 
 const (
 	opEnd            = 0
@@ -198,6 +198,8 @@ const (
 	KeyRightAlt   Key = 1035
 	KeyLeftMeta   Key = 1036
 	KeyRightMeta  Key = 1037
+	KeyBack       Key = 1040
+	KeyForward    Key = 1041
 )
 
 const (

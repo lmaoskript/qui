@@ -143,7 +143,7 @@ func main() {
 
 Enter submits a single-line field. In a multiline field Enter adds a newline and Ctrl+Enter submits, unless `EnterSubmits` is set, where Enter submits and Shift+Enter adds a newline. Multiline fields grow with their text up to `MaxH`, then scroll. Native fields handle caret movement, selection, clipboard, undo, IME composition and Linux primary selection; the web uses real `<input>` and `<textarea>`.
 
-`ui.KeyPressed(key, mods...)` (C++ `ui.key_pressed(key, mods)`) needs the exact modifiers. Keys are `KeyEnter KeyEscape KeyBackspace KeyDelete KeySpace KeyLeft KeyRight KeyUp KeyDown KeyHome KeyEnd KeyPageUp KeyPageDown KeyF1..KeyF12` or a lowercase rune. Mods are `ModShift ModCtrl ModAlt ModMeta`. A focused field keeps the keys it uses, Tab moves focus, and Enter or Space clicks a focused button.
+`ui.KeyPressed(key, mods...)` (C++ `ui.key_pressed(key, mods)`) needs the exact modifiers. Keys are `KeyEnter KeyEscape KeyBackspace KeyDelete KeySpace KeyLeft KeyRight KeyUp KeyDown KeyHome KeyEnd KeyPageUp KeyPageDown KeyF1..KeyF12 KeyBack KeyForward` (the mouse back and forward buttons) or a lowercase rune. Mods are `ModShift ModCtrl ModAlt ModMeta`. A focused field keeps the keys it uses, Tab moves focus, and Enter or Space clicks a focused button.
 
 ## Virtual list
 

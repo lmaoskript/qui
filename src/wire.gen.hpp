@@ -6,7 +6,7 @@ namespace qui {
 
 namespace wire {
 
-inline constexpr uint8_t kVersion = 12;
+inline constexpr uint8_t kVersion = 13;
 inline constexpr int kThemeCount = 4;
 inline constexpr int kTokenCount = 19;
 
@@ -228,6 +228,8 @@ inline constexpr uint32_t KeyLeftAlt = 1034;
 inline constexpr uint32_t KeyRightAlt = 1035;
 inline constexpr uint32_t KeyLeftMeta = 1036;
 inline constexpr uint32_t KeyRightMeta = 1037;
+inline constexpr uint32_t KeyBack = 1040;
+inline constexpr uint32_t KeyForward = 1041;
 
 inline constexpr uint32_t ModShift = 1;
 inline constexpr uint32_t ModCtrl = 2;

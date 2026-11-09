@@ -1041,6 +1041,8 @@ struct qui_app {
           set_focus(hovered, false);
           dirty = true;
           if (InputState *state = input_of(hovered)) pointer_select(*state, e.button.clicks, SDL_GetModState() & SDL_KMOD_SHIFT);
+        } else if (e.button.button == SDL_BUTTON_X1 || e.button.button == SDL_BUTTON_X2) {
+          on_key(e.button.button == SDL_BUTTON_X1 ? KeyBack : KeyForward, 0);
         } else if (e.button.button == SDL_BUTTON_MIDDLE && sdl_ready) {
           if (InputState *state = input_of(hovered)) {
             set_focus(hovered, false);
