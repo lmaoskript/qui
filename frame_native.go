@@ -26,6 +26,23 @@ func (u *Ui) Wake() { u.app.Wake() }
 
 func (u *Ui) consumeBack() { u.app.ConsumeBack() }
 
+// PickFiles opens the system file picker without blocking. The chosen paths
+// arrive later through PickedFiles, and the app is woken when they do. Native
+// only.
+func (u *Ui) PickFiles(multiple bool) { u.app.PickFiles(multiple) }
+
+// PickedFiles returns and clears the paths chosen in the file picker.
+func (u *Ui) PickedFiles() []string {
+	var out []string
+	for {
+		path, ok := u.app.PickedFile()
+		if !ok {
+			return out
+		}
+		out = append(out, path)
+	}
+}
+
 // SetClipboard puts text on the system clipboard.
 func (u *Ui) SetClipboard(text string) { u.app.SetClipboard(text) }
 

@@ -6,6 +6,8 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <deque>
+#include <mutex>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -194,6 +196,9 @@ void capture_stdio() {
 }  // namespace
 
 struct qui_app {
+  std::mutex picked_lock;
+  std::deque<std::string> picked;
+  std::string picked_out;
   Engine engine;
   std::unique_ptr<Backend> backend;
   CpuBackend *cpu = nullptr;
@@ -1479,6 +1484,31 @@ void qui_set_app_id(const char *id) { g_app_id = id ? id : ""; }
 void qui_consume_back(qui_app *app) { app->back_consumed = true; }
 
 void qui_set_clipboard(qui_app *app, const char *text) { app->set_clipboard(text ? text : ""); }
+
+namespace {
+void picked_files(void *userdata, const char *const *files, int) {
+  auto *app = static_cast<qui_app *>(userdata);
+  if (files) {
+    std::lock_guard lock(app->picked_lock);
+    for (; *files; ++files) app->picked.emplace_back(*files);
+  }
+  qui_wake(app);
+}
+}  // namespace
+
+void qui_pick_files(qui_app *app, int multiple) {
+  if (!app || app->headless || !app->window) return;
+  SDL_ShowOpenFileDialog(picked_files, app, app->window, nullptr, 0, nullptr, multiple != 0);
+}
+
+const char *qui_picked_file(qui_app *app) {
+  if (!app) return nullptr;
+  std::lock_guard lock(app->picked_lock);
+  if (app->picked.empty()) return nullptr;
+  app->picked_out = std::move(app->picked.front());
+  app->picked.pop_front();
+  return app->picked_out.c_str();
+}
 
 void qui_wake(qui_app *app) {
   if (!app || app->headless) return;

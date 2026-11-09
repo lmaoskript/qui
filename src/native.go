@@ -40,6 +40,22 @@ func (a *App) Wake() { C.qui_wake(a.app) }
 
 func (a *App) ConsumeBack() { C.qui_consume_back(a.app) }
 
+func (a *App) PickFiles(multiple bool) {
+	m := C.int(0)
+	if multiple {
+		m = 1
+	}
+	C.qui_pick_files(a.app, m)
+}
+
+func (a *App) PickedFile() (string, bool) {
+	p := C.qui_picked_file(a.app)
+	if p == nil {
+		return "", false
+	}
+	return C.GoString(p), true
+}
+
 func (a *App) SetClipboard(text string) {
 	ctext := C.CString(text)
 	defer C.free(unsafe.Pointer(ctext))

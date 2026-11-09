@@ -235,6 +235,8 @@ if menu && ui.Popup("ctx", x, y, qui.Style{W: qui.Px(180), Bg: qui.Raised, Radiu
 ui.Tooltip(row.Hovered, "Copy link")
 ```
 
+`PickFiles(multiple)` opens the system file picker without blocking and `PickedFiles()` returns the paths chosen so far, clearing them; the app is woken when the user picks (native only; C++ `pick_files`, `picked_files`).
+
 `SetClipboard(text)` (C++ `set_clipboard`) puts text on the system clipboard, which a context menu's "Copy" needs; browsers only allow it inside a click.
 
 `Modal` centers a panel over a scrim, `Popup` places a panel at window coordinates (take them from `PointerX/PointerY` on a right click) and keeps it on screen when it has a `W`, and `Tooltip` follows the pointer. C++: `ui.modal(key, style, body)`, `ui.popup(key, x, y, style, body)`, `ui.tooltip(show, text)`.

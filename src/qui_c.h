@@ -23,6 +23,13 @@ void qui_wake(qui_app *app);
  * unclaimed Back press sends the app to the background. */
 void qui_consume_back(qui_app *app);
 
+/* Opens the system file picker without blocking. Chosen paths are queued and
+ * the app is woken; take them one at a time with qui_picked_file. */
+void qui_pick_files(qui_app *app, int multiple);
+
+/* Pops the next chosen path, or NULL when none. Valid until the next call. */
+const char *qui_picked_file(qui_app *app);
+
 /* Puts UTF-8 text on the system clipboard. */
 void qui_set_clipboard(qui_app *app, const char *text);
 

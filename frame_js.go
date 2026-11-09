@@ -43,6 +43,12 @@ func (u *Ui) Wake() { u.bridge.Call("invalidate") }
 
 func (u *Ui) consumeBack() {}
 
+// PickFiles does nothing in the browser yet.
+func (u *Ui) PickFiles(bool) {}
+
+// PickedFiles is always empty in the browser.
+func (u *Ui) PickedFiles() []string { return nil }
+
 // SetClipboard puts text on the system clipboard. Browsers only allow it while
 // handling a user gesture.
 func (u *Ui) SetClipboard(text string) {

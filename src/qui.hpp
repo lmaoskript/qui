@@ -204,6 +204,14 @@ class Ui {
   }
 
   void wake() { qui_wake(app_); }
+  // Opens the system file picker without blocking; chosen paths arrive later
+  // through picked_files, and the app is woken when they do. Native only.
+  void pick_files(bool multiple) { qui_pick_files(app_, multiple ? 1 : 0); }
+  std::vector<std::string> picked_files() {
+    std::vector<std::string> out;
+    while (const char *path = qui_picked_file(app_)) out.emplace_back(path);
+    return out;
+  }
   void set_clipboard(const std::string &text) { qui_set_clipboard(app_, text.c_str()); }
   void set_theme(uint8_t theme) { theme_ = theme; }
 
