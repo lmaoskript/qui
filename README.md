@@ -116,12 +116,16 @@ require github.com/torisetxd/qui v0.0.0
 replace github.com/torisetxd/qui => ../qui
 ```
 
-**C++:** add this to `CMakeLists.txt`, with qui checked out as a subfolder. It needs C++20.
+**C++:** needs CMake 3.25 and C++20. With no checkout, fetch it:
 
 ```cmake
-add_subdirectory(qui)
-target_link_libraries(app PRIVATE qui)
+include(FetchContent)
+FetchContent_Declare(qui GIT_REPOSITORY https://github.com/torisetxd/qui GIT_TAG main)
+FetchContent_MakeAvailable(qui)
+target_link_libraries(app PRIVATE qui::qui)
 ```
+
+Or check it out as a subfolder (or git submodule) and use `add_subdirectory(qui)`. `#include "qui.hpp"` then works with no extra include paths. For the Linux desktop tools, also link `qui::sys` and include `qui_sys.hpp` (set `-DQUI_BUILD_SYS=OFF` to skip it).
 
 ### Ship to the web
 

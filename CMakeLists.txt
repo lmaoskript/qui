@@ -1,5 +1,7 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.25)
 project(qui LANGUAGES CXX)
+
+option(QUI_BUILD_SYS "Build qui_sys (Linux install, portals, screen and mic capture) when its dependencies exist" ON)
 
 find_package(PkgConfig REQUIRED)
 if(WIN32 OR ANDROID)
@@ -14,8 +16,9 @@ add_library(qui STATIC src/app.cpp src/cpu.cpp src/engine.cpp src/font_manager.c
 target_compile_features(qui PUBLIC cxx_std_20)
 target_include_directories(qui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(qui PRIVATE PkgConfig::QUI_DEPS)
+add_library(qui::qui ALIAS qui)
 
-if(NOT WIN32 AND NOT ANDROID)
+if(QUI_BUILD_SYS AND NOT WIN32 AND NOT ANDROID)
   pkg_check_modules(QUI_SYS_DEPS IMPORTED_TARGET gio-2.0 gio-unix-2.0 libpipewire-0.3)
 endif()
 if(QUI_SYS_DEPS_FOUND)
@@ -23,8 +26,9 @@ if(QUI_SYS_DEPS_FOUND)
   target_compile_features(qui_sys PUBLIC cxx_std_20)
   target_include_directories(qui_sys PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/sys)
   target_link_libraries(qui_sys PRIVATE PkgConfig::QUI_SYS_DEPS)
+  add_library(qui::sys ALIAS qui_sys)
 endif()
 
-if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
 endif()
