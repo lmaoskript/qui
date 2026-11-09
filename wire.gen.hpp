@@ -6,7 +6,7 @@ namespace qui {
 
 namespace wire {
 
-inline constexpr uint8_t kVersion = 4;
+inline constexpr uint8_t kVersion = 5;
 inline constexpr int kThemeCount = 4;
 inline constexpr int kTokenCount = 19;
 
@@ -55,6 +55,7 @@ enum Op : uint8_t {
   OpShadow = 41,
   OpTracking = 42,
   OpScrollTo = 43,
+  OpGestures = 44,
 };
 
 enum Kind : uint8_t {
@@ -91,6 +92,12 @@ enum Flag : uint32_t {
   FlagChanged = 256,
   FlagSubmitted = 512,
   FlagShaderError = 1024,
+  FlagLongPressed = 2048,
+  FlagDoubleTapped = 4096,
+  FlagPanStart = 8192,
+  FlagPanning = 16384,
+  FlagPanEnd = 32768,
+  FlagPinching = 65536,
 };
 
 enum Token : uint8_t {
@@ -193,5 +200,10 @@ inline constexpr uint32_t ModShift = 1;
 inline constexpr uint32_t ModCtrl = 2;
 inline constexpr uint32_t ModAlt = 4;
 inline constexpr uint32_t ModMeta = 8;
+
+inline constexpr uint8_t GesturePanX = 1;
+inline constexpr uint8_t GesturePanY = 2;
+inline constexpr uint8_t GesturePinch = 4;
+inline constexpr uint8_t GestureTouchOnly = 8;
 
 }  // namespace qui

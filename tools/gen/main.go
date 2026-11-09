@@ -138,6 +138,10 @@ func cpp(s spec) string {
 	for _, v := range s.groups["mod"] {
 		fmt.Fprintf(&b, "inline constexpr uint32_t Mod%s = %d;\n", v.name, v.value)
 	}
+	b.WriteString("\n")
+	for _, v := range s.groups["gesture"] {
+		fmt.Fprintf(&b, "inline constexpr uint8_t Gesture%s = %d;\n", v.name, v.value)
+	}
 	b.WriteString("\n}  // namespace qui\n")
 	return b.String()
 }
@@ -177,6 +181,10 @@ func goSource(s spec) string {
 	for _, v := range s.groups["mod"] {
 		fmt.Fprintf(&b, "\tMod%s Mods = %d\n", v.name, v.value)
 	}
+	b.WriteString(")\n\nconst (\n")
+	for _, v := range s.groups["gesture"] {
+		fmt.Fprintf(&b, "\tGesture%s Gestures = %d\n", v.name, v.value)
+	}
 	b.WriteString(")\n")
 	return b.String()
 }
@@ -186,7 +194,7 @@ func js(s spec) string {
 	fmt.Fprintf(&b, "export const Version = %d;\n\n", s.version)
 	for _, e := range []struct{ group, name string }{
 		{"op", "Op"}, {"kind", "Kind"}, {"dir", "Dir"}, {"size", "Size"},
-		{"align", "Align"}, {"role", "Role"}, {"flag", "Flag"}, {"key", "Key"}, {"mod", "Mod"},
+		{"align", "Align"}, {"role", "Role"}, {"flag", "Flag"}, {"key", "Key"}, {"mod", "Mod"}, {"gesture", "Gesture"},
 	} {
 		fmt.Fprintf(&b, "export const %s = {", e.name)
 		for i, v := range s.groups[e.group] {

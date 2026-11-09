@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 4
+const wireVersion = 5
 
 const (
 	opEnd         = 0
@@ -47,6 +47,7 @@ const (
 	opShadow      = 41
 	opTracking    = 42
 	opScrollTo    = 43
+	opGestures    = 44
 )
 
 const (
@@ -83,6 +84,12 @@ const (
 	flagChanged      = 256
 	flagSubmitted    = 512
 	flagShaderError  = 1024
+	flagLongPressed  = 2048
+	flagDoubleTapped = 4096
+	flagPanStart     = 8192
+	flagPanning      = 16384
+	flagPanEnd       = 32768
+	flagPinching     = 65536
 )
 
 const (
@@ -165,4 +172,11 @@ const (
 	ModCtrl  Mods = 2
 	ModAlt   Mods = 4
 	ModMeta  Mods = 8
+)
+
+const (
+	GesturePanX      Gestures = 1
+	GesturePanY      Gestures = 2
+	GesturePinch     Gestures = 4
+	GestureTouchOnly Gestures = 8
 )

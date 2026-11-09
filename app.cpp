@@ -6,7 +6,6 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -28,10 +27,13 @@ namespace {
 
 using namespace qui;
 
-constexpr float kDragThreshold = 4;
-constexpr size_t kResultsHeader = 64, kResultsSlot = 48;
+constexpr float kDragThreshold = 4, kTouchSlop = 8;
+constexpr size_t kResultsHeader = 64, kResultsSlot = 56;
 constexpr float kWheelPixels = 48;
 constexpr double kCaretBlink = 0.53;
+constexpr double kLongPress = 0.5, kDoubleTap = 0.3, kPressDelay = 0.08, kVelocityWindow = 0.1, kFlingStep = 1.0 / 60.0;
+constexpr float kDoubleTapSlop = 24, kFlingMin = 120, kFlingStop = 24, kFlingDecay = 3, kFlingMax = 6000;
+constexpr double kNever = std::numeric_limits<double>::infinity();
 
 std::string g_app_id;
 
@@ -223,12 +225,42 @@ struct qui_app {
   SDL_Rect last_ime_area{};
   SDL_Cursor *cursor_text = nullptr;
 
+  enum class Track : uint8_t { None, Pending, Press, Pan, Scroll, Pinch, Done };
+  struct Link {
+    uint64_t id;
+    uint8_t gestures;
+    bool scroll;
+  };
+  struct Sample {
+    double time;
+    float x, y;
+  };
+  struct Finger {
+    SDL_FingerID id;
+    float x, y;
+  };
+
+  Track track = Track::None;
+  bool track_touch = false, input_touch = false;
+  std::vector<Link> chain;
+  std::vector<Sample> samples;
+  std::vector<Finger> fingers;
+  uint64_t gesture_owner = 0, pan_start = 0, pan_end = 0, pinch_once = 0, long_pressed = 0, double_tapped = 0, last_tap_id = 0, fling_id = 0;
+  float vel_x = 0, vel_y = 0, pinch_scale = 1, pinch_spread = 0, last_tap_x = 0, last_tap_y = 0, fling_v = 0;
+  double long_press_at = kNever, press_show_at = 0, last_tap_at = -1, fling_next = 0, fling_last = 0, drive_clock = 0;
+
   double next_tick = 0, blink_at = 0;
-  std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
   double last_frame_time = 0;
   float dt = 1.f / 60.f;
 
-  double now() const { return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(); }
+  double now() const { return static_cast<double>(SDL_GetTicksNS()) * 1e-9; }
+  double clock() const { return headless ? drive_clock : now(); }
+  double event_time(const SDL_Event &e) const { return headless ? drive_clock : static_cast<double>(e.common.timestamp) * 1e-9; }
+  uint64_t active_pan() const { return track == Track::Pan ? gesture_owner : 0; }
+  uint64_t active_pinch() const { return track == Track::Pinch ? gesture_owner : pinch_once; }
+  bool press_hidden() const { return press_show_at > 0 && pressed; }
+  uint64_t shown_pressed() const { return press_hidden() ? 0 : pressed; }
+  uint64_t shown_hovered() const { return press_hidden() ? 0 : hovered; }
 
   void read_size() {
     if (headless && !window) return;
@@ -318,6 +350,8 @@ struct qui_app {
     }
 
     if (!g_app_id.empty()) SDL_SetAppMetadata(title, nullptr, g_app_id.c_str());
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
     if (!SDL_Init(SDL_INIT_VIDEO)) {
       std::fprintf(stderr, "qui: could not start SDL: %s\n", SDL_GetError());
       quit = true;
@@ -350,11 +384,15 @@ struct qui_app {
     }
   }
 
+  static bool inside(const HitEntry &hit, float x, float y) {
+    return x >= hit.x && x < hit.x + hit.w && y >= hit.y && y < hit.y + hit.h && x >= hit.cx0 && x < hit.cx1 && y >= hit.cy0 && y < hit.cy1;
+  }
+
   uint64_t hit_test(float x, float y, bool scroll) const {
     const auto &hits = engine.hits;
     for (auto it = hits.rbegin(); it != hits.rend(); ++it) {
       if (!scroll && !it->press) continue;
-      if (x < it->x || x >= it->x + it->w || y < it->y || y >= it->y + it->h || x < it->cx0 || x >= it->cx1 || y < it->cy0 || y >= it->cy1) continue;
+      if (!inside(*it, x, y)) continue;
       if (!scroll || it->scroll) return it->id;
       return it->scroll_parent >= 0 ? hits[static_cast<size_t>(it->scroll_parent)].id : 0;
     }
@@ -364,8 +402,7 @@ struct qui_app {
   const HitEntry *scrollbar_at(float x, float y) const {
     const auto &hits = engine.hits;
     for (auto it = hits.rbegin(); it != hits.rend(); ++it) {
-      if (!it->press && !it->scroll) continue;
-      if (x < it->x || x >= it->x + it->w || y < it->y || y >= it->y + it->h || x < it->cx0 || x >= it->cx1 || y < it->cy0 || y >= it->cy1) continue;
+      if ((!it->press && !it->scroll) || !inside(*it, x, y)) continue;
       return it->scrollbar ? &*it : nullptr;
     }
     return nullptr;
@@ -388,12 +425,13 @@ struct qui_app {
   }
 
   void update_hover() {
-    const HitEntry *bar = scrollbar_at(pointer_x, pointer_y);
+    const HitEntry *bar = input_touch ? nullptr : scrollbar_at(pointer_x, pointer_y);
     if (const uint64_t bar_id = bar ? bar->id : 0; bar_id != scrollbar_hovered) {
       scrollbar_hovered = bar_id;
       dirty = true;
     }
-    const uint64_t id = bar ? 0 : hit_test(pointer_x, pointer_y, false);
+    const bool lifted = input_touch && track != Track::Pending && track != Track::Press;
+    const uint64_t id = bar || lifted ? 0 : hit_test(pointer_x, pointer_y, false);
     if (id != hovered) {
       hovered = id;
       dirty = true;
@@ -627,21 +665,284 @@ struct qui_app {
     input_touched(state);
   }
 
-  void wheel(float amount) {
-    const uint64_t id = hit_test(pointer_x, pointer_y, true);
-    if (!id) return;
+  bool can_scroll(uint64_t id, float delta) const {
+    if (const auto input = engine.inputs.find(id); input != engine.inputs.end())
+      return delta < 0 ? input->second.scroll_y > 0 : input->second.scroll_y < input->second.scroll_limit_y;
+    if (const auto list = engine.lists.find(id); list != engine.lists.end())
+      return delta < 0 ? list->second.anchor > 0 || list->second.offset > 0 : !list->second.stuck;
+    if (const auto scroll = engine.scrolls.find(id); scroll != engine.scrolls.end())
+      return delta < 0 ? scroll->second.offset > 0 : scroll->second.offset < scroll->second.content - scroll->second.viewport;
+    return false;
+  }
+
+  bool scroll_content(uint64_t id, float delta) {
+    if (!can_scroll(id, delta)) return false;
     if (const auto input = engine.inputs.find(id); input != engine.inputs.end()) {
-      input->second.scroll_y = std::max(0.f, input->second.scroll_y - amount * kWheelPixels * dpr);
-      dirty = true;
-    } else if (const auto it = engine.lists.find(id); it != engine.lists.end()) {
-      it->second.scroll_by(-amount * kWheelPixels);
-      if (amount < 0 && it->second.bottom && it->second.anchor + 1 >= it->second.count) it->second.stuck = true;
-      dirty = true;
+      input->second.scroll_y = std::clamp(input->second.scroll_y + delta * dpr, 0.f, input->second.scroll_limit_y);
+    } else if (const auto list = engine.lists.find(id); list != engine.lists.end()) {
+      list->second.scroll_by(delta);
+      if (delta > 0 && list->second.bottom && list->second.anchor + 1 >= list->second.count) list->second.stuck = true;
     } else if (const auto scroll = engine.scrolls.find(id); scroll != engine.scrolls.end()) {
-      const float limit = std::max(0.f, scroll->second.content - scroll->second.viewport);
-      scroll->second.offset = std::clamp(scroll->second.offset - amount * kWheelPixels, 0.f, limit);
+      scroll->second.offset = std::clamp(scroll->second.offset + delta, 0.f, std::max(0.f, scroll->second.content - scroll->second.viewport));
+    }
+    dirty = true;
+    return true;
+  }
+
+  void capture_chain() {
+    chain.clear();
+    const auto &hits = engine.hits;
+    for (auto it = hits.rbegin(); it != hits.rend(); ++it) {
+      if (it->scrollbar || !inside(*it, pointer_x, pointer_y)) continue;
+      for (auto i = static_cast<int32_t>(hits.rend() - it) - 1; i >= 0; i = hits[static_cast<size_t>(i)].parent) {
+        const HitEntry &hit = hits[static_cast<size_t>(i)];
+        chain.push_back({hit.id, hit.gestures, hit.scroll});
+      }
+      return;
+    }
+  }
+
+  void wheel(float amount) {
+    fling_id = 0;
+    if (SDL_GetModState() & SDL_KMOD_CTRL) {
+      capture_chain();
+      const auto link = std::find_if(chain.begin(), chain.end(), [](const Link &l) { return (l.gestures & GesturePinch) && !(l.gestures & GestureTouchOnly); });
+      if (link != chain.end()) {
+        pinch_once = link->id;
+        pinch_scale *= std::pow(1.1f, amount);
+        dirty = true;
+        return;
+      }
+    }
+    if (const uint64_t id = hit_test(pointer_x, pointer_y, true)) scroll_content(id, -amount * kWheelPixels);
+  }
+
+  void begin_track(double time, bool touch) {
+    track = Track::Pending;
+    track_touch = touch;
+    press_x = pointer_x;
+    press_y = pointer_y;
+    samples.assign(1, {time, pointer_x, pointer_y});
+    capture_chain();
+  }
+
+  void push_sample(double time) {
+    if (samples.size() >= 32) samples.erase(samples.begin());
+    samples.push_back({time, pointer_x, pointer_y});
+  }
+
+  void measure_velocity() {
+    vel_x = vel_y = 0;
+    if (samples.size() < 2) return;
+    const Sample &last = samples.back();
+    auto first = samples.end() - 1;
+    while (first != samples.begin() && last.time - (first - 1)->time <= kVelocityWindow) --first;
+    const auto span = static_cast<float>(last.time - first->time);
+    if (span < 0.001f) return;
+    vel_x = (last.x - first->x) / span;
+    vel_y = (last.y - first->y) / span;
+  }
+
+  void claim_gesture(Track kind, uint64_t id) {
+    track = kind;
+    gesture_owner = id;
+    pressed = 0;
+    dragging = false;
+    long_press_at = kNever;
+    dirty = true;
+  }
+
+  void claim(float total_x, float total_y) {
+    long_press_at = kNever;
+    const bool horizontal = std::abs(total_x) > std::abs(total_y);
+    const uint8_t axis = horizontal ? GesturePanX : GesturePanY;
+    if (!selecting) {
+      for (const Link &link : chain) {
+        if ((link.gestures & axis) && (track_touch || !(link.gestures & GestureTouchOnly))) {
+          claim_gesture(Track::Pan, link.id);
+          pan_start = link.id;
+          return;
+        }
+        if (track_touch && !horizontal && link.scroll && can_scroll(link.id, -total_y)) {
+          claim_gesture(Track::Scroll, link.id);
+          return;
+        }
+      }
+    }
+    track = Track::Press;
+    if (pressed) {
+      dragging = true;
+      drag_start = pressed;
+    }
+  }
+
+  void track_move(double time, float dx, float dy) {
+    if (track == Track::None || track == Track::Done || track == Track::Pinch) return;
+    push_sample(time);
+    const float total_x = pointer_x - press_x, total_y = pointer_y - press_y;
+    if (track == Track::Pending && std::hypot(total_x, total_y) >= (track_touch ? kTouchSlop : kDragThreshold)) claim(total_x, total_y);
+    if (track == Track::Scroll) {
+      scroll_content(gesture_owner, -dy);
+    } else if (track == Track::Pan || dragging) {
+      drag_dx += dx;
+      drag_dy += dy;
+      if (track == Track::Pan) measure_velocity();
       dirty = true;
     }
+  }
+
+  void finish_track(double time, bool canceled) {
+    if (track == Track::None) return;
+    push_sample(time);
+    measure_velocity();
+    if (canceled) vel_x = vel_y = 0;
+    if (track == Track::Pan) {
+      pan_end = gesture_owner;
+      dirty = true;
+    } else if (track == Track::Scroll && std::abs(vel_y) >= kFlingMin) {
+      fling_id = gesture_owner;
+      fling_v = std::clamp(-vel_y, -kFlingMax, kFlingMax);
+      fling_last = fling_next = clock();
+      dirty = true;
+    }
+    track = Track::None;
+    gesture_owner = 0;
+    long_press_at = kNever;
+    press_show_at = 0;
+  }
+
+  void step_fling(float elapsed) {
+    const float before = fling_v;
+    fling_v *= std::exp(-kFlingDecay * elapsed);
+    if (!scroll_content(fling_id, (before + fling_v) * 0.5f * elapsed) || std::abs(fling_v) < kFlingStop) fling_id = 0;
+    dirty = true;
+  }
+
+  void fire_long_press() {
+    long_press_at = kNever;
+    if (!pressed) return;
+    long_pressed = right_clicked = pressed;
+    if (InputState *state = input_of(pressed)) {
+      set_focus(pressed, false);
+      pointer_select(*state, 2, false);
+    }
+    pressed = 0;
+    track = Track::Done;
+    dirty = true;
+  }
+
+  void run_timers() {
+    const double t = clock();
+    if (t >= long_press_at) fire_long_press();
+    if (press_show_at > 0 && t >= press_show_at) {
+      press_show_at = 0;
+      dirty = true;
+    }
+    if (fling_id && t >= fling_next) {
+      step_fling(static_cast<float>(std::min(t - fling_last, 0.05)));
+      fling_last = t;
+      fling_next = t + (cpu ? kFlingStep : 0);
+    }
+  }
+
+  bool note_tap(double time, uint64_t id) {
+    const bool second = id == last_tap_id && time - last_tap_at <= kDoubleTap && std::hypot(pointer_x - last_tap_x, pointer_y - last_tap_y) <= kDoubleTapSlop;
+    if (second) double_tapped = id;
+    last_tap_id = second ? 0 : id;
+    last_tap_at = time;
+    last_tap_x = pointer_x;
+    last_tap_y = pointer_y;
+    return second;
+  }
+
+  void touch_tap(double time) {
+    const uint64_t target = pressed && pressed == hovered ? pressed : 0;
+    set_focus(target, false);
+    if (!target) return;
+    clicked = target;
+    const bool second = note_tap(time, target);
+    if (InputState *state = input_of(target)) {
+      pointer_select(*state, second ? 2 : 1, false);
+      selecting = false;
+      if (sdl_ready && window) SDL_StartTextInput(window);
+    }
+  }
+
+  float finger_spread() const { return fingers.size() < 2 ? 0 : std::hypot(fingers[0].x - fingers[1].x, fingers[0].y - fingers[1].y); }
+
+  void finger_down(const SDL_TouchFingerEvent &finger, double time) {
+    const float x = finger.x * logical_w, y = finger.y * logical_h;
+    fingers.push_back({finger.fingerID, x, y});
+    const bool stopped_fling = fling_id != 0;
+    fling_id = 0;
+    if (fingers.size() > 1) {
+      if (fingers.size() > 2 || (track != Track::Pending && track != Track::Press)) return;
+      const auto link = std::find_if(chain.begin(), chain.end(), [](const Link &l) { return l.gestures & GesturePinch; });
+      if (link == chain.end()) return;
+      claim_gesture(Track::Pinch, link->id);
+      pinch_spread = finger_spread();
+      pointer_x = (fingers[0].x + fingers[1].x) / 2;
+      pointer_y = (fingers[0].y + fingers[1].y) / 2;
+      return;
+    }
+    input_touch = true;
+    pointer_x = x;
+    pointer_y = y;
+    pointer_down = pointer_tapped = true;
+    begin_track(time, true);
+    update_hover();
+    pressed = stopped_fling ? 0 : hovered;
+    dirty = true;
+    if (pressed) long_press_at = time + kLongPress;
+    const bool in_scroller = std::any_of(chain.begin(), chain.end(), [](const Link &l) { return l.scroll; });
+    press_show_at = pressed && in_scroller ? time + kPressDelay : 0;
+  }
+
+  void finger_motion(const SDL_TouchFingerEvent &finger, double time) {
+    const auto it = std::find_if(fingers.begin(), fingers.end(), [&](const Finger &f) { return f.id == finger.fingerID; });
+    if (it == fingers.end()) return;
+    it->x = finger.x * logical_w;
+    it->y = finger.y * logical_h;
+    if (track == Track::Pinch) {
+      if (fingers.size() < 2) return;
+      const float x = (fingers[0].x + fingers[1].x) / 2, y = (fingers[0].y + fingers[1].y) / 2, spread = finger_spread();
+      drag_dx += x - pointer_x;
+      drag_dy += y - pointer_y;
+      pointer_x = x;
+      pointer_y = y;
+      if (pinch_spread > 0 && spread > 0) pinch_scale *= spread / pinch_spread;
+      pinch_spread = spread;
+      dirty = true;
+      return;
+    }
+    if (it != fingers.begin()) return;
+    const float dx = it->x - pointer_x, dy = it->y - pointer_y;
+    pointer_x = it->x;
+    pointer_y = it->y;
+    update_hover();
+    track_move(time, dx, dy);
+  }
+
+  void finger_up(const SDL_TouchFingerEvent &finger, double time, bool canceled) {
+    const auto it = std::find_if(fingers.begin(), fingers.end(), [&](const Finger &f) { return f.id == finger.fingerID; });
+    if (it == fingers.end()) return;
+    const bool primary = it == fingers.begin();
+    fingers.erase(it);
+    if (track == Track::Pinch) {
+      pinch_once = gesture_owner;
+      track = Track::Done;
+      gesture_owner = 0;
+      dirty = true;
+    }
+    if (!primary) return;
+    pointer_down = false;
+    if (dragging) drag_end = pressed;
+    else if (track == Track::Pending && !canceled) touch_tap(time);
+    pressed = 0;
+    dragging = false;
+    finish_track(time, canceled);
+    update_hover();
+    dirty = true;
   }
 
   void handle(const SDL_Event &e) {
@@ -668,6 +969,7 @@ struct qui_app {
         float x, y;
         to_logical(e.motion.x, e.motion.y, x, y);
         const float dx = x - pointer_x, dy = y - pointer_y;
+        input_touch = false;
         pointer_x = x;
         pointer_y = y;
         if (scrollbar_dragged) {
@@ -681,17 +983,7 @@ struct qui_app {
             input_touched(*state);
           }
         }
-        if (pressed) {
-          if (!dragging && std::hypot(x - press_x, y - press_y) >= kDragThreshold) {
-            dragging = true;
-            drag_start = pressed;
-          }
-          if (dragging) {
-            drag_dx += dx;
-            drag_dy += dy;
-            dirty = true;
-          }
-        }
+        track_move(event_time(e), dx, dy);
         break;
       }
       case SDL_EVENT_WINDOW_MOUSE_LEAVE:
@@ -699,9 +991,11 @@ struct qui_app {
         update_hover();
         break;
       case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+        input_touch = false;
         to_logical(e.button.x, e.button.y, pointer_x, pointer_y);
         update_hover();
         if (e.button.button == SDL_BUTTON_LEFT) {
+          fling_id = 0;
           pointer_down = true;
           pointer_tapped = true;
           if (const HitEntry *bar = scrollbar_at(pointer_x, pointer_y)) {
@@ -712,10 +1006,9 @@ struct qui_app {
             dirty = true;
             break;
           }
+          begin_track(event_time(e), false);
           pressed = hovered;
           set_focus(hovered, false);
-          press_x = pointer_x;
-          press_y = pointer_y;
           dirty = true;
           if (InputState *state = input_of(hovered)) pointer_select(*state, e.button.clicks, SDL_GetModState() & SDL_KMOD_SHIFT);
         } else if (e.button.button == SDL_BUTTON_MIDDLE && sdl_ready) {
@@ -736,10 +1029,15 @@ struct qui_app {
         if (e.button.button == SDL_BUTTON_LEFT) {
           pointer_down = false;
           scrollbar_dragged = 0;
-          if (dragging) drag_end = pressed;
-          else if (pressed && pressed == hovered) clicked = pressed;
+          if (dragging) {
+            drag_end = pressed;
+          } else if (pressed && pressed == hovered) {
+            clicked = pressed;
+            note_tap(event_time(e), pressed);
+          }
           pressed = 0;
           dragging = false;
+          finish_track(event_time(e), false);
           if (selecting && sdl_ready) {
             InputState *state = focused_input();
             if (state && state->has_selection() && !state->password) SDL_SetPrimarySelectionText(std::string(state->selected()).c_str());
@@ -751,6 +1049,16 @@ struct qui_app {
       }
       case SDL_EVENT_MOUSE_WHEEL:
         wheel(e.wheel.y);
+        break;
+      case SDL_EVENT_FINGER_DOWN:
+        finger_down(e.tfinger, event_time(e));
+        break;
+      case SDL_EVENT_FINGER_MOTION:
+        finger_motion(e.tfinger, event_time(e));
+        break;
+      case SDL_EVENT_FINGER_UP:
+      case SDL_EVENT_FINGER_CANCELED:
+        finger_up(e.tfinger, event_time(e), e.type == SDL_EVENT_FINGER_CANCELED);
         break;
       case SDL_EVENT_USER:
         dirty = true;
@@ -823,7 +1131,50 @@ struct qui_app {
       e.button.y = y * dpr;
       handle(e);
     };
-    if (std::sscanf(step.c_str(), "drag:%f,%f,%f,%f", &x, &y, &x2, &y2) == 4) {
+    const auto finger = [&](Uint32 type, float fx, float fy, SDL_FingerID id = 1) {
+      SDL_Event e{};
+      e.type = type;
+      e.tfinger.fingerID = id;
+      e.tfinger.x = fx / logical_w;
+      e.tfinger.y = fy / logical_h;
+      handle(e);
+    };
+    float ms = 0;
+    if (std::sscanf(step.c_str(), "touch:%f,%f", &x, &y) == 2) {
+      finger(SDL_EVENT_FINGER_DOWN, x, y);
+    } else if (std::sscanf(step.c_str(), "touchmove:%f,%f", &x, &y) == 2) {
+      finger(SDL_EVENT_FINGER_MOTION, x, y);
+    } else if (std::sscanf(step.c_str(), "touchup:%f,%f", &x, &y) == 2) {
+      finger(SDL_EVENT_FINGER_UP, x, y);
+    } else if (std::sscanf(step.c_str(), "tap:%f,%f", &x, &y) == 2) {
+      finger(SDL_EVENT_FINGER_DOWN, x, y);
+      finger(SDL_EVENT_FINGER_UP, x, y);
+    } else if (std::sscanf(step.c_str(), "longpress:%f,%f", &x, &y) == 2) {
+      finger(SDL_EVENT_FINGER_DOWN, x, y);
+      drive_clock += kLongPress + 0.01;
+      run_timers();
+      finger(SDL_EVENT_FINGER_UP, x, y);
+    } else if (std::sscanf(step.c_str(), "swipe:%f,%f,%f,%f,%f", &x, &y, &x2, &y2, &ms) == 5) {
+      constexpr int kSteps = 12;
+      finger(SDL_EVENT_FINGER_DOWN, x, y);
+      for (int i = 1; i <= kSteps; ++i) {
+        const float t = static_cast<float>(i) / kSteps;
+        drive_clock += ms / 1000.0 / kSteps;
+        finger(SDL_EVENT_FINGER_MOTION, x + (x2 - x) * t, y + (y2 - y) * t);
+      }
+      finger(SDL_EVENT_FINGER_UP, x2, y2);
+    } else if (std::sscanf(step.c_str(), "pinch:%f,%f,%f,%f", &x, &y, &x2, &y2) == 4) {
+      constexpr int kSteps = 8;
+      finger(SDL_EVENT_FINGER_DOWN, x - x2 / 2, y, 1);
+      finger(SDL_EVENT_FINGER_DOWN, x + x2 / 2, y, 2);
+      for (int i = 1; i <= kSteps; ++i) {
+        const float half = (x2 + (y2 - x2) * static_cast<float>(i) / kSteps) / 2;
+        finger(SDL_EVENT_FINGER_MOTION, x - half, y, 1);
+        finger(SDL_EVENT_FINGER_MOTION, x + half, y, 2);
+      }
+      finger(SDL_EVENT_FINGER_UP, x - y2 / 2, y, 2);
+      finger(SDL_EVENT_FINGER_UP, x + y2 / 2, y, 1);
+    } else if (std::sscanf(step.c_str(), "drag:%f,%f,%f,%f", &x, &y, &x2, &y2) == 4) {
       motion();
       button(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_LEFT);
       x = x2;
@@ -893,15 +1244,18 @@ struct qui_app {
       SDL_Event event;
       while (SDL_PollEvent(&event)) handle(event);
       if (quit) return false;
+      run_timers();
       if (dirty) {
         dirty = false;
         return true;
       }
       const double interval = animating() ? tick_interval() : 0;
       const bool blinking = focused_input() != nullptr;
-      double deadline = std::numeric_limits<double>::infinity();
-      if (interval > 0) deadline = next_tick;
+      double deadline = long_press_at;
+      if (interval > 0) deadline = std::min(deadline, next_tick);
       if (blinking) deadline = std::min(deadline, blink_at);
+      if (press_show_at > 0) deadline = std::min(deadline, press_show_at);
+      if (fling_id) deadline = std::min(deadline, fling_next);
       bool got = false;
       if (std::isfinite(deadline)) {
         got = SDL_WaitEventTimeout(&event, static_cast<Sint32>(std::ceil(std::max(0.0, (deadline - now()) * 1000.0))));
@@ -938,10 +1292,16 @@ struct qui_app {
           std::memcpy(slot + 16, &count, 4);
         }
         if (has_rect) std::memcpy(slot + 24, rect, 16);
-        if ((id == pressed && dragging) || id == drag_end) {
+        const bool panned = id == active_pan() || id == pan_end;
+        if ((id == pressed && dragging) || id == drag_end || panned || id == active_pinch()) {
           std::memcpy(slot + 40, &drag_dx, 4);
           std::memcpy(slot + 44, &drag_dy, 4);
         }
+        if (panned) {
+          std::memcpy(slot + 48, &vel_x, 4);
+          std::memcpy(slot + 52, &vel_y, 4);
+        }
+        if (id == active_pinch()) std::memcpy(slot + 20, &pinch_scale, 4);
         return;
       }
     }
@@ -981,14 +1341,20 @@ struct qui_app {
     for (const HitEntry &hit : engine.hits) {
       if (hit.scrollbar) continue;
       uint32_t flags = 0;
-      if (hit.id == hovered) flags |= wire::FlagHovered;
-      if (hit.id == pressed) flags |= wire::FlagPressed;
+      if (hit.id == shown_hovered()) flags |= wire::FlagHovered;
+      if (hit.id == shown_pressed()) flags |= wire::FlagPressed;
       if (hit.id == clicked) flags |= wire::FlagClicked;
       if (hit.id == right_clicked) flags |= wire::FlagRightClicked;
       if (hit.id == focused) flags |= wire::FlagFocused;
       if (hit.id == drag_start) flags |= wire::FlagDragStart;
       if (hit.id == pressed && dragging) flags |= wire::FlagDragging;
       if (hit.id == drag_end) flags |= wire::FlagDragEnd;
+      if (hit.id == long_pressed) flags |= wire::FlagLongPressed;
+      if (hit.id == double_tapped) flags |= wire::FlagDoubleTapped;
+      if (hit.id == pan_start) flags |= wire::FlagPanStart;
+      if (hit.id == active_pan()) flags |= wire::FlagPanning;
+      if (hit.id == pan_end) flags |= wire::FlagPanEnd;
+      if (hit.id == active_pinch()) flags |= wire::FlagPinching;
       const float rect[] = {hit.x, hit.y, hit.w, hit.h};
       put_slot(results, capacity, hit.id, flags, 0, 0, rect, true);
     }
@@ -1017,9 +1383,10 @@ struct qui_app {
       put_slot(results, capacity, draw.id, wire::FlagShaderError, blob_at, static_cast<uint32_t>(error.size()), nullptr, false);
       blob_at += static_cast<uint32_t>(error.size());
     }
-    if (clicked || right_clicked || drag_start || drag_end || edits || !keys.empty()) dirty = true;
-    clicked = right_clicked = drag_start = drag_end = 0;
+    if (clicked || right_clicked || drag_start || drag_end || long_pressed || double_tapped || pan_start || pan_end || pinch_once || edits || !keys.empty()) dirty = true;
+    clicked = right_clicked = drag_start = drag_end = long_pressed = double_tapped = pan_start = pan_end = pinch_once = 0;
     drag_dx = drag_dy = 0;
+    pinch_scale = 1;
     keys.clear();
   }
 
@@ -1047,7 +1414,7 @@ struct qui_app {
       set_focus(engine.focus_request, false);
       engine.focus_request = 0;
     }
-    engine.ui = {hovered, pressed, focused, focus_ring, headless || caret_on, scrollbar_dragged ? scrollbar_dragged : scrollbar_hovered};
+    engine.ui = {shown_hovered(), shown_pressed(), focused, focus_ring, headless || caret_on, scrollbar_dragged ? scrollbar_dragged : scrollbar_hovered};
     engine.paint();
     if (focused && std::none_of(engine.hits.begin(), engine.hits.end(), [&](const HitEntry &e) { return e.id == focused; })) set_focus(0, false);
     update_ime_area();
@@ -1075,7 +1442,7 @@ struct qui_app {
     }
     if (!headless && !scrollbar_dragged) update_hover();
     const double t = now();
-    dt = static_cast<float>(t - last_frame_time);
+    dt = headless ? 1.f / 60.f : static_cast<float>(t - last_frame_time);
     last_frame_time = t;
     ++frames;
   }
@@ -1131,11 +1498,13 @@ void qui_close(qui_app *app) {
 
 const uint8_t *qui_frame_begin(qui_app *app, size_t *len) {
   if (app->headless) {
-    if (app->frames >= app->total_frames()) {
+    if (app->frames >= app->total_frames() && !app->fling_id) {
       app->finish();
       return nullptr;
     }
+    app->drive_clock += kFlingStep;
     app->drive_step();
+    app->run_timers();
   } else if (!app->wait()) {
     return nullptr;
   }

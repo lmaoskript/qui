@@ -47,7 +47,7 @@ struct Node {
   int32_t parent = -1, first_child = -1, last_child = -1, next_sibling = -1;
   uint8_t kind = 0, dir = 0, align = 0, justify = 0, role = 0, hit = 0, weight = 0;
   uint8_t w_mode = 0, h_mode = 0;
-  uint8_t multiline = 0, focus_mode = 0;
+  uint8_t multiline = 0, focus_mode = 0, gestures = 0;
   bool mono = false, clip = false, scroll = false, ellipsis = false, has_pos = false, bottom = false;
   bool password = false, placeholder_shown = false, has_gradient = false, has_scroll_to = false;
   float w_val = 0, h_val = 0, min_w = 0, max_w = 0, min_h = 0, max_h = 0;
@@ -167,7 +167,8 @@ struct HitEntry {
   float cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0;
   bool press = false, scroll = false, focusable = false, scrollbar = false;
   float thumb_y = 0, thumb_h = 0;
-  int32_t scroll_parent = -1;
+  int32_t scroll_parent = -1, parent = -1;
+  uint8_t gestures = 0;
 };
 
 struct ScrollState {
@@ -271,7 +272,7 @@ class Engine {
  private:
   SystemFont sans_regular_, sans_bold_, mono_regular_, mono_bold_;
   std::unordered_map<uint64_t, FontInstanceId> font_cache_;
-  int32_t scroll_parent_ = -1;
+  int32_t scroll_parent_ = -1, hit_parent_ = -1;
   std::vector<float> visual_;
   RoundClip round_clip_;
 

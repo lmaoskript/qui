@@ -1,7 +1,7 @@
 import { Align, Dir, Flag, Key, Kind, Mod, Op, Role, Size, Themes, Tokens, Version } from "./wire.gen.js";
 
 const HEADER = 64;
-const SLOT = 48;
+const SLOT = 56;
 const OVERSCAN_ROWS = 6;
 const MAX_LIST_PX = 15000000; // Firefox discards element heights above about 17.9M px.
 const listPitch = (node) => (node.est || 32) + (node.gap || 0);
@@ -167,6 +167,7 @@ function decode(bytes, length) {
       case Op.Shadow: node.shadow = r.u32(); node.shadowBlur = r.f32(); node.shadowY = r.f32(); break;
       case Op.Tracking: node.tracking = r.f32(); break;
       case Op.ScrollTo: node.scrollTo = r.f32(); break;
+      case Op.Gestures: node.gestures = r.u8(); break;
       case Op.Uniform: {
         const nameLength = r.u8();
         const name = decoder.decode(r.bytes.subarray(r.at, r.at + nameLength));

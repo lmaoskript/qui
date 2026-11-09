@@ -325,6 +325,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         node.shadow_y = in.read<float>();
         break;
       case OpTracking: node.tracking = in.read<float>(); break;
+      case OpGestures: node.gestures = in.read<uint8_t>(); break;
       case OpScrollTo:
         node.scroll_to = in.read<float>();
         node.has_scroll_to = true;
@@ -931,8 +932,8 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     return (c & 0xffffff00u) | std::min(a, 255u);
   };
 
-  int32_t own_scroll = -1;
-  if (index != 0 && (node.hit || node.scroll || node.kind == KindList)) {
+  int32_t own_scroll = -1, own_hit = -1;
+  if (index != 0 && (node.hit || node.scroll || node.gestures || node.kind == KindList)) {
     HitEntry hit;
     hit.id = node.id;
     hit.x = node.x;
@@ -947,8 +948,11 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     hit.scroll = node.scroll || node.kind == KindList || (node.kind == KindInput && node.multiline);
     hit.focusable = node.kind == KindButton || node.kind == KindInput;
     hit.scroll_parent = scroll_parent_;
+    hit.parent = hit_parent_;
+    hit.gestures = node.gestures;
     hits.push_back(hit);
-    if (hit.scroll) own_scroll = static_cast<int32_t>(hits.size()) - 1;
+    own_hit = static_cast<int32_t>(hits.size()) - 1;
+    if (hit.scroll) own_scroll = own_hit;
   }
 
   const float radius = node.radius * dpr;
@@ -1017,10 +1021,12 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     child_clip = intersect(clip, inner);
     if (radius > static_cast<float>(border)) round_clip_ = {inner.x, inner.y, inner.w, inner.h, radius - static_cast<float>(border)};
   }
-  const int32_t outer_scroll = scroll_parent_;
+  const int32_t outer_scroll = scroll_parent_, outer_hit = hit_parent_;
   if (own_scroll >= 0) scroll_parent_ = own_scroll;
+  if (own_hit >= 0) hit_parent_ = own_hit;
   paint_children(node, alpha, child_clip);
   scroll_parent_ = outer_scroll;
+  hit_parent_ = outer_hit;
 
   if (node.kind == KindList) {
     const auto it = lists.find(node.id);
@@ -1084,7 +1090,7 @@ void Engine::paint_children(const Node &node, float opacity, IRect clip) {
 }
 
 void Engine::paint() {
-  scroll_parent_ = -1;
+  scroll_parent_ = hit_parent_ = -1;
   round_clip_ = {};
   frame.instances.clear();
   frame.batches.clear();
@@ -1173,6 +1179,7 @@ std::string Engine::tree_json() const {
     if (n.placeholder_shown) out += ",\"placeholder\":\"" + escape(n.text) + "\"";
     else if (!n.text.empty()) out += ",\"text\":\"" + escape(n.text) + "\"";
     if (n.hit) out += ",\"hit\":true";
+    if (n.gestures) out += ",\"gestures\":" + std::to_string(n.gestures);
     if (n.id == ui.focused) out += ",\"focused\":true";
     if (n.kind == KindInput) {
       if (const auto input = inputs.find(n.id); input != inputs.end()) {

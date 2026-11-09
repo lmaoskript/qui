@@ -61,6 +61,7 @@ struct Style {
   BoxShadow shadow{};
   bool clip = false, scroll = false, hit = false;
   std::optional<float> scroll_to{};
+  uint8_t gestures = 0;
   uint8_t role = 0;
   std::string_view label{}, key{};
 };
@@ -82,11 +83,16 @@ inline constexpr TextStyle H2{.size = 18, .bold = true, .color = Strong, .role =
 inline constexpr TextStyle Small{.size = 12, .color = Muted};
 inline constexpr TextStyle Code{.size = 13, .mono = true};
 
+enum class Swipe : uint8_t { None, Left, Right, Up, Down };
+
 struct Response {
   bool found = false, hovered = false, pressed = false, clicked = false, right_clicked = false;
   bool focused = false, drag_start = false, dragging = false, drag_end = false;
   bool changed = false, submitted = false;
+  bool long_pressed = false, double_tapped = false, pan_start = false, panning = false, pan_end = false, pinching = false;
   float x = 0, y = 0, w = 0, h = 0, dx = 0, dy = 0;
+  float vx = 0, vy = 0, scale = 1;
+  Swipe swipe = Swipe::None;
   uint32_t first = 0, count = 0;
   std::string_view error{};
 };
@@ -399,6 +405,7 @@ class Ui {
     if (s.scroll) u8(wire::OpScroll);
     if (s.scroll_to) f32_op(wire::OpScrollTo, *s.scroll_to);
     if (s.hit) u8_op(wire::OpHit, 1);
+    if (s.gestures) u8_op(wire::OpGestures, s.gestures);
     if (s.role) u8_op(wire::OpRole, s.role);
     if (!s.label.empty()) str(wire::OpLabel, s.label);
   }
@@ -415,6 +422,15 @@ class Ui {
     return lookup(id);
   }
 
+  static Swipe swipe_of(const Response &r) {
+    constexpr float speed = 300;
+    if (!r.pan_end) return Swipe::None;
+    const float x = r.vx < 0 ? -r.vx : r.vx, y = r.vy < 0 ? -r.vy : r.vy;
+    if (x >= y && x >= speed) return r.vx < 0 ? Swipe::Left : Swipe::Right;
+    if (y > x && y >= speed) return r.vy < 0 ? Swipe::Up : Swipe::Down;
+    return Swipe::None;
+  }
+
   Response lookup(uint64_t id) const {
     Response out;
     if (!res_) return out;
@@ -422,7 +438,7 @@ class Ui {
     std::memcpy(&capacity, res_ + 4, 4);
     if (!capacity) return out;
     for (uint32_t i = static_cast<uint32_t>(id) & (capacity - 1);; i = (i + 1) & (capacity - 1)) {
-      const uint8_t *slot = res_ + 64 + static_cast<size_t>(i) * 48;
+      const uint8_t *slot = res_ + 64 + static_cast<size_t>(i) * 56;
       uint64_t key = 0;
       std::memcpy(&key, slot, 8);
       if (key == 0) return out;
@@ -437,6 +453,16 @@ class Ui {
       std::memcpy(&out.h, slot + 36, 4);
       std::memcpy(&out.dx, slot + 40, 4);
       std::memcpy(&out.dy, slot + 44, 4);
+      std::memcpy(&out.vx, slot + 48, 4);
+      std::memcpy(&out.vy, slot + 52, 4);
+      out.long_pressed = flags & wire::FlagLongPressed;
+      out.double_tapped = flags & wire::FlagDoubleTapped;
+      out.pan_start = flags & wire::FlagPanStart;
+      out.panning = flags & wire::FlagPanning;
+      out.pan_end = flags & wire::FlagPanEnd;
+      out.pinching = flags & wire::FlagPinching;
+      if (out.pinching) std::memcpy(&out.scale, slot + 20, 4);
+      out.swipe = swipe_of(out);
       out.found = true;
       out.hovered = flags & wire::FlagHovered;
       out.pressed = flags & wire::FlagPressed;

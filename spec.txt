@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 4
+version 5
 
 kind Box 0
 kind Text 1
@@ -77,6 +77,12 @@ op Gradient 40
 op Shadow 41
 op Tracking 42
 op ScrollTo 43
+op Gestures 44
+
+gesture PanX 1
+gesture PanY 2
+gesture Pinch 4
+gesture TouchOnly 8
 
 key Backspace 8
 key Tab 9
@@ -121,6 +127,12 @@ flag DragEnd 128
 flag Changed 256
 flag Submitted 512
 flag ShaderError 1024
+flag LongPressed 2048
+flag DoubleTapped 4096
+flag PanStart 8192
+flag Panning 16384
+flag PanEnd 32768
+flag Pinching 65536
 
 token Background 1
 token Surface 2

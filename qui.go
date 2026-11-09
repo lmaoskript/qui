@@ -46,6 +46,7 @@ type Style struct {
 	Shadow                 BoxShadow
 	Clip, Scroll, Hit      bool
 	ScrollTo               *float32
+	Gestures               Gestures
 	Role                   Role
 	Label, Key             string
 }
@@ -89,8 +90,17 @@ type Response struct {
 	Found, Hovered, Pressed, Clicked, RightClicked bool
 	Focused, DragStart, Dragging, DragEnd          bool
 	Changed, Submitted                             bool
-	X, Y, W, H, DX, DY                             float32
-	First, Count                                   uint32
+	// LongPressed fires for a touch held in place, and also sets RightClicked.
+	LongPressed, DoubleTapped           bool
+	PanStart, Panning, PanEnd, Pinching bool
+	X, Y, W, H, DX, DY                  float32
+	// VX and VY are the pan velocity in pixels per second.
+	VX, VY float32
+	// Scale is this frame's pinch factor, 1 when not pinching.
+	Scale float32
+	// Swipe is the direction of a pan that ended at speed this frame.
+	Swipe        Swipe
+	First, Count uint32
 	// Error holds the compile log of a failed Shader.
 	Error string
 }
@@ -545,6 +555,9 @@ func (u *Ui) emitStyle(s *Style) {
 	if s.Hit {
 		u.u8Op(opHit, 1)
 	}
+	if s.Gestures != 0 {
+		u.u8Op(opGestures, uint8(s.Gestures))
+	}
 	if s.Role != 0 {
 		u.u8Op(opRole, uint8(s.Role))
 	}
@@ -568,11 +581,30 @@ func (u *Ui) container(dir uint8, s *Style, body func()) Response {
 
 const (
 	resultsHeader = 64
-	resultsSlot   = 48
+	resultsSlot   = 56
+	swipeSpeed    = 300
 )
 
+func swipeOf(r *Response) Swipe {
+	if !r.PanEnd {
+		return SwipeNone
+	}
+	abs := func(v float32) float32 { return max(v, -v) }
+	switch {
+	case abs(r.VX) >= abs(r.VY) && r.VX <= -swipeSpeed:
+		return SwipeLeft
+	case abs(r.VX) >= abs(r.VY) && r.VX >= swipeSpeed:
+		return SwipeRight
+	case abs(r.VY) > abs(r.VX) && r.VY <= -swipeSpeed:
+		return SwipeUp
+	case abs(r.VY) > abs(r.VX) && r.VY >= swipeSpeed:
+		return SwipeDown
+	}
+	return SwipeNone
+}
+
 func (u *Ui) lookup(id uint64) Response {
-	var out Response
+	out := Response{Scale: 1}
 	if len(u.res) < resultsHeader {
 		return out
 	}
@@ -599,6 +631,17 @@ func (u *Ui) lookup(id uint64) Response {
 		out.Count = binary.LittleEndian.Uint32(slot[16:])
 		out.X, out.Y, out.W, out.H = float(24), float(28), float(32), float(36)
 		out.DX, out.DY = float(40), float(44)
+		out.VX, out.VY = float(48), float(52)
+		out.LongPressed = flags&flagLongPressed != 0
+		out.DoubleTapped = flags&flagDoubleTapped != 0
+		out.PanStart = flags&flagPanStart != 0
+		out.Panning = flags&flagPanning != 0
+		out.PanEnd = flags&flagPanEnd != 0
+		out.Pinching = flags&flagPinching != 0
+		if out.Pinching {
+			out.Scale = float(20)
+		}
+		out.Swipe = swipeOf(&out)
 		out.Hovered = flags&flagHovered != 0
 		out.Pressed = flags&flagPressed != 0
 		out.Clicked = flags&flagClicked != 0
