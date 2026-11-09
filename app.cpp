@@ -201,17 +201,20 @@ struct qui_app {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+#if defined(_WIN32)
+    bool es = false;
+#else
     bool es = true;
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    gl = SDL_GL_CreateContext(window);
-    if (!gl) {
-      es = false;
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+#endif
+    const auto attempt = [&](bool use_es) {
+      es = use_es;
+      SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, use_es ? SDL_GL_CONTEXT_PROFILE_ES : SDL_GL_CONTEXT_PROFILE_CORE);
+      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, use_es ? 0 : 3);
       gl = SDL_GL_CreateContext(window);
-    }
+    };
+    attempt(es);
+    if (!gl) attempt(!es);
     if (gl) {
       SDL_GL_MakeCurrent(window, gl);
       SDL_GL_SetSwapInterval(1);

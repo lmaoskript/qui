@@ -43,7 +43,8 @@ var (
 
 type options struct {
 	app, out, title, bg, sans, mono, preventKeys string
-	compress                                     bool
+	target, arch, id                             string
+	compress, console                            bool
 }
 
 type artifact struct {
@@ -73,7 +74,11 @@ func parseArgs(args []string) (options, error) {
 		fmt.Fprintln(os.Stderr, "usage: qui build [flags] [app folder]")
 		flags.PrintDefaults()
 	}
-	flags.StringVar(&o.out, "o", "", "output folder (default <app folder>/dist)")
+	flags.StringVar(&o.target, "target", "web", "web, windows or android")
+	flags.StringVar(&o.arch, "arch", "", "CPU for native targets: amd64 or arm64 (android takes a comma-separated list, default both)")
+	flags.StringVar(&o.id, "id", "", "android package id (default dev.qui.<app folder>)")
+	flags.BoolVar(&o.console, "console", false, "windows: keep a console window for logging")
+	flags.StringVar(&o.out, "o", "", "output folder (default <app folder>/dist, or dist/<target> for native targets)")
 	flags.StringVar(&o.title, "title", "", "page title until the app sets its own (default the app folder name)")
 	flags.StringVar(&o.bg, "bg", "#0e0f11", "page background shown before the app starts")
 	flags.StringVar(&o.sans, "sans", "", "CSS font-family for normal text")
@@ -109,8 +114,14 @@ func build(o options) error {
 	} else if !info.IsDir() {
 		return fmt.Errorf("%s is not a folder", app)
 	}
+	if o.target != "web" && o.target != "windows" && o.target != "android" {
+		return fmt.Errorf("unknown -target %s", o.target)
+	}
 	if o.out == "" {
 		o.out = filepath.Join(app, "dist")
+		if o.target != "web" {
+			o.out = filepath.Join(app, "dist", o.target)
+		}
 	}
 	out, err := filepath.Abs(o.out)
 	if err != nil {
@@ -133,6 +144,9 @@ func build(o options) error {
 	}
 	if pkg != "main" {
 		return fmt.Errorf("%s is package %s, not package main", app, pkg)
+	}
+	if o.target == "windows" {
+		return buildWindows(app, out, o)
 	}
 	// Resolved per app so the JS always matches the wire version the app was built against.
 	quiDir, err := goOutput(app, "list", "-m", "-f", "{{.Dir}}", quiModule)
