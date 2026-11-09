@@ -49,6 +49,8 @@ type Style struct {
 	Gestures               Gestures
 	Role                   Role
 	Label, Key             string
+	// Class names registered with Ui.Class, separated by spaces.
+	Class string
 }
 
 type TextStyle struct {
@@ -60,6 +62,8 @@ type TextStyle struct {
 	Role                 Role
 	Gradient             Gradient
 	Tracking             float32
+	// Class names registered with Ui.TextClass, separated by spaces.
+	Class string
 }
 
 // Gradient is a two-color linear gradient. Angle is in CSS degrees: 0 runs
@@ -147,9 +151,13 @@ type Ui struct {
 	stack   []scope
 	res     []byte
 	theme   Theme
-	started bool
-	nodes   int
-	stats   Stats
+	palette []paletteEntry
+
+	styleClasses map[string]Style
+	textClasses  map[string]TextStyle
+	started      bool
+	nodes        int
+	stats        Stats
 }
 
 func newUi() *Ui {
@@ -175,6 +183,7 @@ func (u *Ui) Frame() bool {
 	u.u8(opFrame)
 	u.u8(wireVersion)
 	u.u8(uint8(u.theme))
+	u.emitPalette()
 	return true
 }
 
@@ -208,6 +217,7 @@ func (u *Ui) Text(value string, style ...TextStyle) {
 	if len(style) > 0 {
 		t = style[0]
 	}
+	t = u.resolveText(t)
 	u.open(kindText, "")
 	u.str(opText, value)
 	if t.Size != 0 {
@@ -477,6 +487,10 @@ func (u *Ui) emitGradient(g Gradient) {
 }
 
 func (u *Ui) emitStyle(s *Style) {
+	if s.Class != "" {
+		resolved := u.resolveStyle(*s)
+		s = &resolved
+	}
 	u.sizeOp(opWidth, s.W)
 	u.sizeOp(opHeight, s.H)
 	if s.MinW != 0 {

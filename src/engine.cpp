@@ -209,6 +209,16 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       if (version != kVersion)
         std::fprintf(stderr, "qui: app uses wire version %u but the engine expects %u\n", version, kVersion);
       if (theme >= kThemeCount) theme = 0;
+      palette_set.reset();
+      continue;
+    }
+    if (op == OpPalette) {
+      const uint16_t count = in.read<uint16_t>();
+      for (uint16_t i = 0; i < count && in.ok(); ++i) {
+        const uint8_t token = in.read<uint8_t>();
+        palette[token] = in.read<uint32_t>();
+        palette_set.set(token);
+      }
       continue;
     }
     if (op == OpOpen) {
@@ -366,7 +376,9 @@ FontInstanceId Engine::font_for(const Node &node) {
 uint32_t Engine::resolve(uint32_t color) const {
   if ((color & 0x00ffffffu) == 0 && (color >> 24) != 0) {
     const uint32_t token = color >> 24;
+    if (palette_set.test(token)) return palette[token];
     if (token <= static_cast<uint32_t>(kTokenCount)) return kThemes[theme][token];
+    return 0;
   }
   return color;
 }
@@ -1100,7 +1112,7 @@ void Engine::paint() {
   hits.clear();
   frame.width = static_cast<int>(std::round(nodes[0].w * dpr));
   frame.height = static_cast<int>(std::round(nodes[0].h * dpr));
-  frame.clear = kThemes[theme][TokenBackground];
+  frame.clear = resolve(static_cast<uint32_t>(TokenBackground) << 24);
   // The system bars sit outside the root's padding, so they show the clear color.
   if (insets[0] > 0 || insets[1] > 0 || insets[2] > 0 || insets[3] > 0) {
     const int32_t child = nodes[0].first_child;

@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace qui {
@@ -65,6 +66,7 @@ struct Style {
   uint8_t gestures = 0;
   uint8_t role = 0;
   std::string_view label{}, key{};
+  std::string_view klass{};
 };
 
 struct TextStyle {
@@ -76,6 +78,7 @@ struct TextStyle {
   uint8_t role = 0;
   Gradient gradient{};
   float tracking = 0;
+  std::string_view klass{};
 };
 
 inline constexpr TextStyle Body{};
@@ -173,11 +176,39 @@ class Ui {
     u8(wire::OpFrame);
     u8(wire::kVersion);
     u8(theme_);
+    emit_palette();
     return true;
   }
 
   void wake() { qui_wake(app_); }
   void set_theme(uint8_t theme) { theme_ = theme; }
+
+  constexpr static Color token(uint8_t id) { return Color(id) << 24; }
+
+  void set_palette(uint8_t base, std::initializer_list<std::pair<Color, Color>> colors) {
+    theme_ = base;
+    palette_.clear();
+    for (const auto &[token, value] : colors) set_token(token, value);
+  }
+
+  void set_token(Color token, Color value) {
+    const uint8_t id = token >> 24;
+    for (auto &entry : palette_) {
+      if (entry.first == id) {
+        entry.second = value;
+        return;
+      }
+    }
+    palette_.emplace_back(id, value);
+    std::sort(palette_.begin(), palette_.end());
+  }
+
+  void define_class(std::string name, Style style) {
+    style.key = style.label = {};
+    style_classes_[std::move(name)] = std::move(style);
+  }
+
+  void define_text_class(std::string name, TextStyle style) { text_classes_[std::move(name)] = std::move(style); }
   float width() const { return header(8); }
   float height() const { return header(12); }
   float dpr() const { return header(16); }
@@ -198,7 +229,8 @@ class Ui {
   template <class F>
   Response stack(const Style &style, F &&body) { return container(wire::DirStack, style, body); }
 
-  void text(std::string_view value, const TextStyle &style = Body) {
+  void text(std::string_view value, TextStyle style = Body) {
+    if (!style.klass.empty()) style = resolve_text(style);
     open(wire::KindText, {});
     str(wire::OpText, value);
     if (style.size) f32_op(wire::OpFontSize, style.size);
@@ -452,7 +484,103 @@ class Ui {
     f32(g.angle);
   }
 
-  void emit_style(const Style &s) {
+  void emit_palette() {
+    if (palette_.empty()) return;
+    u8(wire::OpPalette);
+    const uint16_t count = static_cast<uint16_t>(palette_.size());
+    u8(count & 255);
+    u8(count >> 8);
+    for (const auto &[id, value] : palette_) {
+      u8(id);
+      u32(value);
+    }
+  }
+
+  template <class Map>
+  static std::vector<const typename Map::mapped_type *> class_chain(const Map &map, std::string_view names) {
+    std::vector<const typename Map::mapped_type *> out;
+    size_t i = 0;
+    while (i < names.size()) {
+      while (i < names.size() && names[i] == ' ') ++i;
+      size_t j = i;
+      while (j < names.size() && names[j] != ' ') ++j;
+      if (j > i)
+        if (const auto it = map.find(std::string(names.substr(i, j - i))); it != map.end()) out.push_back(&it->second);
+      i = j;
+    }
+    return out;
+  }
+
+  Style resolve_style(Style s) const {
+    const auto chain = class_chain(style_classes_, s.klass);
+    s.klass = {};
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+      Style base = **it;
+      if (!base.klass.empty()) base = resolve_style(base);
+      merge_style(s, base);
+    }
+    return s;
+  }
+
+  TextStyle resolve_text(TextStyle t) const {
+    const auto chain = class_chain(text_classes_, t.klass);
+    t.klass = {};
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+      TextStyle base = **it;
+      if (!base.klass.empty()) base = resolve_text(base);
+      if (!t.size) t.size = base.size;
+      t.bold |= base.bold;
+      t.mono |= base.mono;
+      t.ellipsis |= base.ellipsis;
+      if (!t.color) t.color = base.color;
+      if (t.w.mode == wire::SizeFit) t.w = base.w;
+      if (!t.align) t.align = base.align;
+      if (!t.role) t.role = base.role;
+      if (!t.gradient.from && !t.gradient.to) t.gradient = base.gradient;
+      if (!t.tracking) t.tracking = base.tracking;
+    }
+    return t;
+  }
+
+  static void merge_style(Style &s, const Style &b) {
+    if (s.w.mode == wire::SizeFit) s.w = b.w;
+    if (s.h.mode == wire::SizeFit) s.h = b.h;
+    if (!s.min_w) s.min_w = b.min_w;
+    if (!s.max_w) s.max_w = b.max_w;
+    if (!s.min_h) s.min_h = b.min_h;
+    if (!s.max_h) s.max_h = b.max_h;
+    if (!s.pad.top && !s.pad.right && !s.pad.bottom && !s.pad.left) s.pad = b.pad;
+    if (!s.gap) s.gap = b.gap;
+    if (!s.align) s.align = b.align;
+    if (!s.justify) s.justify = b.justify;
+    if (!s.absolute) {
+      s.absolute = b.absolute;
+      s.x = b.x;
+      s.y = b.y;
+    }
+    if (!s.z) s.z = b.z;
+    if (!s.bg) s.bg = b.bg;
+    if (!s.fg) s.fg = b.fg;
+    if (!s.border) {
+      s.border = b.border;
+      s.border_w = b.border_w;
+    }
+    if (!s.radius) s.radius = b.radius;
+    if (!s.opacity) s.opacity = b.opacity;
+    if (!s.gradient.from && !s.gradient.to) s.gradient = b.gradient;
+    if (!s.shadow.color) s.shadow = b.shadow;
+    s.clip |= b.clip;
+    s.scroll |= b.scroll;
+    s.hit |= b.hit;
+    if (!s.gestures) s.gestures = b.gestures;
+    if (!s.role) s.role = b.role;
+    if (s.label.empty()) s.label = b.label;
+  }
+
+  void emit_style(const Style &given) {
+    Style resolved;
+    if (!given.klass.empty()) resolved = resolve_style(given);
+    const Style &s = given.klass.empty() ? given : resolved;
     size_op(wire::OpWidth, s.w);
     size_op(wire::OpHeight, s.h);
     if (s.min_w) f32_op(wire::OpMinW, s.min_w);
@@ -573,6 +701,9 @@ class Ui {
   const uint8_t *res_ = nullptr;
   bool started_ = false;
   uint8_t theme_ = 0;
+  std::vector<std::pair<uint8_t, Color>> palette_;
+  std::unordered_map<std::string, Style> style_classes_;
+  std::unordered_map<std::string, TextStyle> text_classes_;
   size_t nodes_ = 0;
   Stats stats_{};
   std::vector<uint8_t> buf_;

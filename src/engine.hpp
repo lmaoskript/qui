@@ -11,6 +11,8 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <array>
+#include <bitset>
 #include <vector>
 
 namespace qui {
@@ -265,6 +267,8 @@ class Engine {
   TextShaper shaper{fonts};
   FrameData frame, previous;
   uint8_t theme = 0;
+  std::array<uint32_t, 256> palette{};
+  std::bitset<256> palette_set;
   float dpr = 1;
   uint64_t frame_number = 0;
   bool wants_another_frame = false;

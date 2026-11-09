@@ -69,6 +69,7 @@ class Reader {
   }
   get more() { return this.at < this.bytes.length; }
   u8() { return this.view.getUint8(this.at++); }
+  u16() { const v = this.view.getUint16(this.at, true); this.at += 2; return v; }
   u32() { const v = this.view.getUint32(this.at, true); this.at += 4; return v; }
   f32() { const v = this.view.getFloat32(this.at, true); this.at += 4; return v; }
   str() {
@@ -80,7 +81,7 @@ class Reader {
 }
 
 function color(value) {
-  if ((value & 0x00ffffff) === 0 && value >>> 24 !== 0) return `var(--qui-${Tokens[value >>> 24]})`;
+  if ((value & 0x00ffffff) === 0 && value >>> 24 !== 0) return `var(--qui-${Tokens[value >>> 24] || `T${value >>> 24}`})`;
   return `rgba(${value >>> 24},${(value >>> 16) & 255},${(value >>> 8) & 255},${(value & 255) / 255})`;
 }
 
@@ -95,6 +96,7 @@ function decode(bytes, length) {
   const root = { children: [] };
   const stack = [root];
   let theme = 0;
+  const palette = [];
   let current = null;
   let propsStart = 0;
   const seal = () => {
@@ -109,6 +111,10 @@ function decode(bytes, length) {
       const version = r.u8();
       theme = r.u8();
       if (version !== Version) console.error(`qui: app uses wire version ${version} but the patcher expects ${Version}`);
+      continue;
+    }
+    if (op === Op.Palette) {
+      for (let n = r.u16(); n > 0; n--) palette.push([r.u8(), r.u32()]);
       continue;
     }
     if (op === Op.Open || op === Op.End) {
@@ -187,11 +193,11 @@ function decode(bytes, length) {
       }
       default:
         console.error(`qui: unknown wire op ${op}, dropping the rest of the frame`);
-        return { root, theme };
+        return { root, theme, palette };
     }
   }
   seal();
-  return { root, theme };
+  return { root, theme, palette };
 }
 
 function sizeCss(mode, value, property) {
@@ -755,10 +761,19 @@ class Patcher {
     });
   }
 
-  setTheme(index) {
-    if (index === this.themeIndex) return;
+  setTheme(index, entries = []) {
+    const signature = entries.join(",");
+    if (index === this.themeIndex && signature === this.paletteSignature) return;
     this.themeIndex = index;
+    this.paletteSignature = signature;
+    for (const name of this.paletteNames ?? []) this.root.style.removeProperty(`--qui-${name}`);
+    this.paletteNames = [];
     for (const [name, value] of Object.entries(Themes[index] ?? Themes[0])) this.root.style.setProperty(`--qui-${name}`, value);
+    for (const [id, value] of entries) {
+      const name = Tokens[id] || `T${id}`;
+      this.paletteNames.push(name);
+      this.root.style.setProperty(`--qui-${name}`, `rgba(${value >>> 24},${(value >>> 16) & 255},${(value >>> 8) & 255},${(value & 255) / 255})`);
+    }
   }
 
   create(node) {
@@ -963,8 +978,8 @@ class Patcher {
 
   apply(bytes, length) {
     const began = performance.now();
-    const { root, theme } = decode(bytes, length);
-    this.setTheme(theme);
+    const { root, theme, palette } = decode(bytes, length);
+    this.setTheme(theme, palette);
     root.dir = Dir.Stack;
     root.kind = Kind.Box;
     root.hDef = true;

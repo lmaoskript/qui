@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 5
+const wireVersion = 6
 
 const (
 	opEnd         = 0
@@ -48,6 +48,7 @@ const (
 	opTracking    = 42
 	opScrollTo    = 43
 	opGestures    = 44
+	opPalette     = 45
 )
 
 const (
