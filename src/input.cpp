@@ -100,6 +100,8 @@ size_t bidi_byte_at_x(const TextLine &line, float x) {
   return line.para_byte + (left_half != ((g.level & 1) != 0) ? g.cluster_start_byte : g.cluster_end_byte);
 }
 
+}  // namespace
+
 float line_x(const TextLine &line, size_t byte) {
   const auto &glyphs = line.shaped->glyphs;
   if (line.first >= line.last) return 0;
@@ -129,7 +131,6 @@ size_t byte_at_x(const TextLine &line, float x) {
   return line.para_byte + glyphs[line.last - 1].cluster_end_byte;
 }
 
-}  // namespace
 
 size_t next_boundary(std::string_view s, size_t at) {
   if (at >= s.size()) return s.size();
@@ -473,6 +474,117 @@ void Engine::paint_input(const Node &node, float alpha, IRect clip) {
   }
 
   if (state.multiline && state.scroll_limit_y > 0) add_scrollbar(node, alpha, clip, state.scroll_y / state.scroll_limit_y, inner_h / content_h);
+}
+
+}  // namespace qui
+
+namespace qui {
+
+float Engine::text_top(const Node &node) const {
+  const float size = node.font_size > 0 ? node.font_size : kDefaultFontSize;
+  const float line_height = line_height_for(size) * dpr;
+  const float free_h = (node.h - node.pad[0] - node.pad[2]) * dpr - line_height * static_cast<float>(node.line_count);
+  return (node.y + node.pad[0]) * dpr + (node.align == Center ? free_h / 2 : node.align == End ? free_h : 0);
+}
+
+float Engine::line_left(const Node &node, const TextLine &line) const {
+  const float free_w = (node.w - node.pad[1] - node.pad[3]) * dpr - line.width;
+  return (node.x + node.pad[3]) * dpr + (node.justify == Center ? free_w / 2 : node.justify == End ? free_w : 0);
+}
+
+uint32_t Engine::text_byte_at(const Node &node, float x, float y) const {
+  if (!node.line_count) return 0;
+  const float size = node.font_size > 0 ? node.font_size : kDefaultFontSize;
+  const float line_height = line_height_for(size) * dpr;
+  const float down = y * dpr - text_top(node);
+  if (down < 0) return 0;
+  if (down >= line_height * static_cast<float>(node.line_count)) return static_cast<uint32_t>(node.text.size());
+  const auto index = static_cast<uint32_t>(std::clamp(std::floor(down / line_height), 0.f, static_cast<float>(node.line_count - 1)));
+  const TextLine &line = lines[node.line_first + index];
+  return static_cast<uint32_t>(std::min(byte_at_x(line, x * dpr - line_left(node, line)), node.text.size()));
+}
+
+bool Engine::text_at(float x, float y, uint64_t root, uint64_t &found_root, TextPoint &out) const {
+  const SelectText *best = nullptr;
+  float best_distance = std::numeric_limits<float>::max();
+  for (const SelectText &text : select_texts_) {
+    const Node &node = nodes[static_cast<size_t>(text.node)];
+    if (root && nodes[static_cast<size_t>(node.select_root)].id != root) continue;
+    const float left = std::max(node.x, static_cast<float>(text.clip.x) / dpr), top = std::max(node.y, static_cast<float>(text.clip.y) / dpr);
+    const float right = std::min(node.x + node.w, static_cast<float>(text.clip.x + text.clip.w) / dpr);
+    const float bottom = std::min(node.y + node.h, static_cast<float>(text.clip.y + text.clip.h) / dpr);
+    if (right <= left || bottom <= top) continue;
+    const float dx = x < left ? left - x : x > right ? x - right : 0;
+    const float dy = y < top ? top - y : y > bottom ? y - bottom : 0;
+    if (!root && (dx > 0 || dy > 0)) continue;
+    const float distance = dy * 4096 + dx;
+    if (distance < best_distance) {
+      best_distance = distance;
+      best = &text;
+    }
+  }
+  if (!best) return false;
+  const Node &node = nodes[static_cast<size_t>(best->node)];
+  found_root = nodes[static_cast<size_t>(node.select_root)].id;
+  out = {node.id, text_byte_at(node, x, y)};
+  return true;
+}
+
+void Engine::select_word(uint64_t root, TextPoint at, bool whole) {
+  const auto node = std::find_if(nodes.begin(), nodes.end(), [&](const Node &n) { return n.id == at.node && n.kind == KindText; });
+  if (node == nodes.end()) return;
+  size_t from = 0, to = node->text.size();
+  if (!whole) word_range(node->text, at.byte, from, to);
+  selection = {root, {at.node, static_cast<uint32_t>(from)}, {at.node, static_cast<uint32_t>(to)}, true};
+}
+
+void Engine::resolve_selection() {
+  sel_root_ = sel_lo_ = sel_hi_ = -1;
+  if (!selection.root) return;
+  int32_t root = -1, anchor = -1, focus = -1;
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    const Node &node = nodes[i];
+    if (node.id == selection.root && node.select_root == static_cast<int32_t>(i)) root = static_cast<int32_t>(i);
+    if (node.kind != KindText) continue;
+    if (node.id == selection.anchor.node) anchor = static_cast<int32_t>(i);
+    if (node.id == selection.focus.node) focus = static_cast<int32_t>(i);
+  }
+  if (root < 0) {
+    selection = {};
+    return;
+  }
+  if (anchor < 0 && focus < 0) return;
+  const auto last = static_cast<int32_t>(nodes.size());
+  if (anchor >= 0 && focus >= 0) selection.anchor_first = anchor < focus || (anchor == focus && selection.anchor.byte <= selection.focus.byte);
+  if (anchor < 0) anchor = selection.anchor_first ? root : last;
+  if (focus < 0) focus = selection.anchor_first ? last : root;
+  const uint32_t anchor_byte = selection.anchor.byte, focus_byte = selection.focus.byte;
+  const bool forward = selection.anchor_first;
+  sel_root_ = root;
+  sel_lo_ = forward ? anchor : focus;
+  sel_hi_ = forward ? focus : anchor;
+  sel_lo_byte_ = forward ? anchor_byte : focus_byte;
+  sel_hi_byte_ = forward ? focus_byte : anchor_byte;
+  if (sel_lo_ == root) sel_lo_byte_ = 0;
+  if (sel_hi_ == last) sel_hi_byte_ = std::numeric_limits<uint32_t>::max();
+}
+
+std::string Engine::selected_text() {
+  resolve_selection();
+  std::string out;
+  if (sel_root_ < 0 || selection.empty()) return out;
+  const Node *previous = nullptr;
+  for (int32_t i = std::max(sel_lo_, 0); i <= sel_hi_ && i < static_cast<int32_t>(nodes.size()); ++i) {
+    const Node &node = nodes[static_cast<size_t>(i)];
+    if (node.kind != KindText || node.select_root != sel_root_) continue;
+    const size_t from = i == sel_lo_ ? std::min<size_t>(sel_lo_byte_, node.text.size()) : 0;
+    const size_t to = i == sel_hi_ ? std::min<size_t>(sel_hi_byte_, node.text.size()) : node.text.size();
+    if (from >= to) continue;
+    if (previous) out += node.y >= previous->y + previous->h - 0.5f ? '\n' : ' ';
+    out.append(node.text.substr(from, to - from));
+    previous = &node;
+  }
+  return out;
 }
 
 }  // namespace qui

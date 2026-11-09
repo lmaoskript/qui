@@ -46,6 +46,9 @@ func (u *Ui) PickedFiles() []string {
 // SetClipboard puts text on the system clipboard.
 func (u *Ui) SetClipboard(text string) { u.app.SetClipboard(text) }
 
+// SelectedText returns the text selected in a Select box as of the last frame.
+func (u *Ui) SelectedText() string { return u.app.SelectedText() }
+
 // SetSmoothScroll eases mouse wheel steps toward their target. Off by default.
 func (u *Ui) SetSmoothScroll(on bool) { u.app.SetSmoothScroll(on) }
 

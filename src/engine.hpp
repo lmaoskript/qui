@@ -37,6 +37,24 @@ struct TextLine {
 };
 
 void visual_offsets(const TextLine &line, std::vector<float> &out);
+float line_x(const TextLine &line, size_t byte);
+size_t byte_at_x(const TextLine &line, float x);
+
+struct TextPoint {
+  uint64_t node = 0;
+  uint32_t byte = 0;
+  bool operator==(const TextPoint &) const = default;
+};
+
+// A selection over the text of one `Select` subtree, between two points in
+// document order. `anchor_first` remembers the order for when an end leaves
+// the frame, as rows of a list do.
+struct TextSelection {
+  uint64_t root = 0;
+  TextPoint anchor, focus;
+  bool anchor_first = true;
+  bool empty() const { return !root || anchor == focus; }
+};
 
 struct UniformRef {
   std::string_view name;
@@ -71,6 +89,7 @@ struct Node {
   uint64_t image = 0;
   uint8_t fit = 0;
   uint32_t span_first = 0, span_count = 0, prepend = 0;
+  int32_t select_root = -1;
 
   float iw = 0, ih = 0, x = 0, y = 0, w = 0, h = 0;
   uint32_t line_first = 0, line_count = 0;
@@ -175,7 +194,7 @@ struct HitEntry {
   uint64_t id = 0;
   float x = 0, y = 0, w = 0, h = 0;
   float cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0;
-  bool press = false, scroll = false, focusable = false, scrollbar = false;
+  bool press = false, scroll = false, focusable = false, scrollbar = false, link = false;
   float thumb_y = 0, thumb_h = 0;
   int32_t scroll_parent = -1, parent = -1;
   uint8_t gestures = 0;
@@ -258,6 +277,15 @@ class Engine {
   size_t input_line_edge(const InputState &state, bool end) const;
   size_t input_vertical(InputState &state, int direction) const;
 
+  // Finds the selectable text under a point, or with `root` set, the nearest
+  // text of that subtree, so a drag past the text keeps extending.
+  bool text_at(float x, float y, uint64_t root, uint64_t &found_root, TextPoint &out) const;
+  void select_word(uint64_t root, TextPoint at, bool whole);
+  std::string selected_text();
+  void resolve_selection();
+  TextSelection selection;
+  std::string selection_cache;
+
   std::vector<Node> nodes;
   std::vector<TextLine> lines;
   std::vector<UniformRef> uniforms;
@@ -313,6 +341,16 @@ class Engine {
   int32_t scroll_parent_ = -1, hit_parent_ = -1;
   std::vector<float> visual_;
   RoundClip round_clip_;
+  struct SelectText {
+    int32_t node = -1;
+    IRect clip;
+  };
+  std::vector<SelectText> select_texts_;
+  int32_t sel_root_ = -1, sel_lo_ = -1, sel_hi_ = -1;
+  uint32_t sel_lo_byte_ = 0, sel_hi_byte_ = 0;
+  uint32_t text_byte_at(const Node &node, float x, float y) const;
+  float text_top(const Node &node) const;
+  float line_left(const Node &node, const TextLine &line) const;
 
   FontInstanceId font_for(const Node &node);
   FontInstanceId font_for(const Node &node, bool bold, bool mono, bool italic = false);

@@ -234,6 +234,7 @@ struct qui_app {
   float scrollbar_grab = 0;
   bool back_pending = false, back_consumed = false;
   bool dragging = false, focus_ring = false, selecting = false, caret_on = true, text_cursor = false, pointer_down = false, pointer_tapped = false;
+  bool text_selecting = false;
   float engine_ms = 0;
   std::vector<uint32_t> keys;
   std::string clipboard, text_blob;
@@ -661,6 +662,8 @@ struct qui_app {
     }
     if (InputState *state = focused_input()) {
       if (input_key(*state, key, mods)) return;
+    } else if (key == 'c' && (mods & ModCtrl) && !engine.selection.empty()) {
+      set_clipboard(engine.selected_text());
     } else if (focused && !mods && (key == KeyEnter || key == KeySpace)) {
       const auto hit = std::find_if(engine.hits.begin(), engine.hits.end(), [&](const HitEntry &e) { return e.id == focused && e.focusable; });
       if (hit != engine.hits.end()) {
@@ -680,6 +683,27 @@ struct qui_app {
     state->preedit.assign(text);
     state->preedit_cursor = std::min(cursor, state->preedit.size());
     input_touched(*state);
+  }
+
+  void start_text_selection(int clicks) {
+    const bool on_link = std::any_of(engine.hits.begin(), engine.hits.end(), [&](const HitEntry &e) { return e.link && e.id == hovered; });
+    uint64_t root = 0;
+    TextPoint at;
+    if (!on_link && engine.text_at(pointer_x, pointer_y, 0, root, at)) {
+      if (clicks >= 2) {
+        engine.select_word(root, at, clicks >= 3);
+      } else if ((SDL_GetModState() & SDL_KMOD_SHIFT) && engine.selection.root == root) {
+        engine.selection.focus = at;
+        text_selecting = true;
+      } else {
+        engine.selection = {root, at, at, true};
+        text_selecting = true;
+      }
+      dirty = true;
+    } else if (!hovered && engine.selection.root) {
+      engine.selection = {};
+      dirty = true;
+    }
   }
 
   void pointer_select(InputState &state, int clicks, bool extend) {
@@ -813,6 +837,12 @@ struct qui_app {
 
   void claim(float total_x, float total_y) {
     long_press_at = kNever;
+    if (text_selecting) {
+      track = Track::Done;
+      pressed = 0;
+      dirty = true;
+      return;
+    }
     const bool horizontal = std::abs(total_x) > std::abs(total_y);
     const uint8_t axis = horizontal ? GesturePanX : GesturePanY;
     if (!selecting) {
@@ -1047,6 +1077,14 @@ struct qui_app {
             input_touched(*state);
           }
         }
+        if (text_selecting && pointer_down) {
+          uint64_t root = 0;
+          TextPoint at;
+          if (engine.text_at(pointer_x, pointer_y, engine.selection.root, root, at) && !(at == engine.selection.focus)) {
+            engine.selection.focus = at;
+            dirty = true;
+          }
+        }
         track_move(event_time(e), dx, dy);
         break;
       }
@@ -1075,6 +1113,7 @@ struct qui_app {
           set_focus(hovered, false);
           dirty = true;
           if (InputState *state = input_of(hovered)) pointer_select(*state, e.button.clicks, SDL_GetModState() & SDL_KMOD_SHIFT);
+          else start_text_selection(e.button.clicks);
         } else if (e.button.button == SDL_BUTTON_X1 || e.button.button == SDL_BUTTON_X2) {
           on_key(e.button.button == SDL_BUTTON_X1 ? KeyBack : KeyForward, 0);
         } else if (e.button.button == SDL_BUTTON_MIDDLE && sdl_ready) {
@@ -1104,6 +1143,12 @@ struct qui_app {
           pressed = 0;
           dragging = false;
           finish_track(event_time(e), false);
+          if (text_selecting) {
+            text_selecting = false;
+            if (engine.selection.empty()) engine.selection = {};
+            else if (sdl_ready) SDL_SetPrimarySelectionText(engine.selected_text().c_str());
+            dirty = true;
+          }
           if (selecting && sdl_ready) {
             InputState *state = focused_input();
             if (state && state->has_selection() && !state->password) SDL_SetPrimarySelectionText(std::string(state->selected()).c_str());
@@ -1503,6 +1548,8 @@ struct qui_app {
     }
     engine.ui = {shown_hovered(), shown_pressed(), focused, focus_ring, headless || caret_on, scrollbar_dragged ? scrollbar_dragged : scrollbar_hovered};
     engine.paint();
+    if (engine.selection.empty()) engine.selection_cache.clear();
+    else engine.selection_cache = engine.selected_text();
     if (focused && std::none_of(engine.hits.begin(), engine.hits.end(), [&](const HitEntry &e) { return e.id == focused; })) set_focus(0, false);
     update_ime_area();
     for (const AtlasUpload &upload : engine.fonts.pending_uploads()) backend->upload(upload);
@@ -1563,6 +1610,8 @@ void qui_set_app_id(const char *id) { g_app_id = id ? id : ""; }
 void qui_consume_back(qui_app *app) { app->back_consumed = true; }
 
 void qui_set_clipboard(qui_app *app, const char *text) { app->set_clipboard(text ? text : ""); }
+
+const char *qui_selected_text(qui_app *app) { return app ? app->engine.selection_cache.c_str() : ""; }
 
 void qui_set_smooth_scroll(qui_app *app, int on) {
   if (!app) return;

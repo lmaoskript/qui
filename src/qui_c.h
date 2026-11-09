@@ -40,6 +40,10 @@ void qui_set_clipboard(qui_app *app, const char *text);
  * default. */
 void qui_set_smooth_scroll(qui_app *app, int on);
 
+/* The text selected in a `Select` subtree as of the last frame, or "". Valid
+ * until the next qui_frame_end. */
+const char *qui_selected_text(qui_app *app);
+
 /* Blocks until a frame is needed. Returns the results table, or NULL on quit.
  * The pointer stays valid until the next qui_frame_begin. */
 const uint8_t *qui_frame_begin(qui_app *app, size_t *len);

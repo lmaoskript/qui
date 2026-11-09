@@ -62,6 +62,8 @@ func (a *App) SetClipboard(text string) {
 	C.qui_set_clipboard(a.app, ctext)
 }
 
+func (a *App) SelectedText() string { return C.GoString(C.qui_selected_text(a.app)) }
+
 func (a *App) SetSmoothScroll(on bool) {
 	v := C.int(0)
 	if on {

@@ -57,6 +57,14 @@ func (u *Ui) SetClipboard(text string) {
 	}
 }
 
+// SelectedText returns the text selected on the page.
+func (u *Ui) SelectedText() string {
+	if sel := js.Global().Call("getSelection"); sel.Truthy() {
+		return sel.Call("toString").String()
+	}
+	return ""
+}
+
 // SetSmoothScroll does nothing in the browser, which smooths the wheel itself.
 func (u *Ui) SetSmoothScroll(bool) {}
 

@@ -252,6 +252,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       node.kind = in.read<uint8_t>();
       node.id = in.read<uint64_t>();
       node.parent = stack.back();
+      node.select_root = nodes[static_cast<size_t>(node.parent)].select_root;
       if (node.kind == KindButton) {
         node.pad[0] = node.pad[2] = 6;
         node.pad[1] = node.pad[3] = 12;
@@ -322,6 +323,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpRadius: node.radius = in.read<float>(); break;
       case OpOpacity: node.opacity = in.read<float>(); break;
       case OpClip: node.clip = true; break;
+      case OpSelect: node.select_root = stack.back(); break;
       case OpScroll: node.scroll = node.clip = true; break;
       case OpHit: node.hit = in.read<uint8_t>(); break;
       case OpRole: node.role = in.read<uint8_t>(); break;
@@ -967,6 +969,12 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
   float y = (node.y + node.pad[0]) * dpr + dy + (node.align == Center ? free_h / 2 : node.align == End ? free_h : 0);
 
   const float ink = metrics->ascender - metrics->descender;
+  uint32_t selected_from = 0, selected_to = 0;
+  if (const auto index = static_cast<int32_t>(&node - nodes.data()); node.kind == KindText && node.select_root >= 0 && node.select_root == sel_root_ && index >= sel_lo_ && index <= sel_hi_) {
+    selected_from = index == sel_lo_ ? sel_lo_byte_ : 0;
+    selected_to = index == sel_hi_ ? sel_hi_byte_ : static_cast<uint32_t>(node.text.size());
+  }
+  const uint32_t selection_color = selected_from < selected_to ? faded(Selection) : 0;
   const auto emit = [&](const ShapedGlyph &g, float origin) {
     float position = origin + g.x_offset;
     uint32_t quarter = 0;
@@ -1029,6 +1037,13 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
         if (span.bg && extent(span, lo, hi)) add_rect(lo - 2 * dpr, y, hi - lo + 4 * dpr, line_height, faded(span.bg), 4 * dpr, 0, clip);
       }
     }
+    if (selection_color && selected_from <= line.end_byte && selected_to > line.start_byte) {
+      const uint32_t lo = std::max(selected_from, line.start_byte), hi = std::min(selected_to, line.end_byte);
+      float a = line_x(line, lo), b = line_x(line, hi);
+      if (a > b) std::swap(a, b);
+      if (selected_to > line.end_byte) b += std::round(4 * dpr);
+      if (b > a) add_rect(x + a, y, b - a, line_height, selection_color, 0, 0, clip);
+    }
     for (uint32_t g = line.first; g < line.last; ++g) {
       const ShapedGlyph &shaped = line.shaped->glyphs[g];
       emit(shaped, x + (bidi ? visual_[g - line.first] : shaped.x - origin));
@@ -1068,6 +1083,7 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
           hit.cx1 = static_cast<float>(clip.x + clip.w) / dpr;
           hit.cy1 = static_cast<float>(clip.y + clip.h) / dpr;
           hit.press = true;
+          hit.link = true;
           hit.scroll_parent = scroll_parent_;
           hit.parent = hit_parent_;
           hits.push_back(hit);
@@ -1178,6 +1194,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
   }
 
   if (node.kind == KindImage) paint_image(node, x0, y0, w, h, alpha, radius, clip);
+  if (node.kind == KindText && node.select_root >= 0 && !visible.empty()) select_texts_.push_back({index, clip});
   if (is_text_leaf(node)) paint_text(node, alpha, clip);
   if (node.kind == KindInput) paint_input(node, alpha, clip);
 
@@ -1264,6 +1281,8 @@ void Engine::paint() {
   frame.batches.clear();
   frame.shaders.clear();
   hits.clear();
+  select_texts_.clear();
+  resolve_selection();
   frame.width = static_cast<int>(std::round(nodes[0].w * dpr));
   frame.height = static_cast<int>(std::round(nodes[0].h * dpr));
   frame.clear = resolve(static_cast<uint32_t>(TokenBackground) << 24);

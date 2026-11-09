@@ -139,6 +139,7 @@ func (s Style) fill(b Style) Style {
 	s.Clip = s.Clip || b.Clip
 	s.Scroll = s.Scroll || b.Scroll
 	s.Hit = s.Hit || b.Hit
+	s.Select = s.Select || b.Select
 	if s.Gestures == 0 {
 		s.Gestures = b.Gestures
 	}

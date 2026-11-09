@@ -58,6 +58,7 @@ const baseCss = `
 .qui-root canvas { display: block; }
 .qui-root [data-qh], .qui-root [data-qp], .qui-list, .qui-text { pointer-events: auto; }
 .qui-root [data-qh]:not(.qui-input) { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
+.qui-root .qui-select, .qui-root .qui-select [data-qh]:not(.qui-input):not(button) { user-select: text; -webkit-user-select: text; }
 .qui-panning, .qui-panning * { user-select: none; -webkit-user-select: none; }
 `;
 
@@ -171,6 +172,7 @@ function decode(bytes, length) {
       case Op.Radius: node.radius = r.f32(); break;
       case Op.Opacity: node.opacity = r.f32(); break;
       case Op.Clip: node.clip = true; break;
+      case Op.Select: node.select = true; break;
       case Op.Scroll: node.scroll = true; break;
       case Op.Hit: node.hit = r.u8(); break;
       case Op.Role: node.role = r.u8(); break;
@@ -530,6 +532,11 @@ class Patcher {
       clearTimeout(press.longTimer);
       const axis = Math.abs(totalX) > Math.abs(totalY) ? Gesture.PanX : Gesture.PanY;
       const selecting = !press.touch && press.target.closest?.(".qui-input");
+      if (!press.touch && press.target.closest?.(".qui-select") && !press.target.closest?.("button, a, .qui-input")) {
+        unpress(press);
+        press.claimed = true;
+        return true;
+      }
       for (const el of selecting ? [] : ancestors(press.target, this.root)) {
         const gestures = el.__gestures ?? 0;
         if ((gestures & axis) && (press.touch || !(gestures & Gesture.TouchOnly))) {
@@ -962,6 +969,7 @@ class Patcher {
       if (node.label) el.setAttribute("aria-label", node.label);
       else el.removeAttribute("aria-label");
       if (node.role === Role.Image) el.setAttribute("role", "img");
+      el.classList.toggle("qui-select", !!node.select);
       if (node.hit || node.kind === Kind.Button || node.kind === Kind.Input) el.setAttribute("data-qh", "");
       else el.removeAttribute("data-qh");
       el.__gestures = node.gestures ?? 0;

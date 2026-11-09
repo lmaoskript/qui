@@ -69,6 +69,7 @@ struct Style {
   uint8_t gestures = 0;
   uint8_t role = 0;
   std::string_view label{}, key{};
+  bool select = false;
 };
 
 struct TextStyle {
@@ -222,6 +223,8 @@ class Ui {
     return out;
   }
   void set_clipboard(const std::string &text) { qui_set_clipboard(app_, text.c_str()); }
+  // The text selected in a `select` box as of the last frame.
+  std::string selected_text() const { return qui_selected_text(app_); }
   // Eases mouse wheel steps. Browsers smooth the wheel themselves.
   void set_smooth_scroll(bool on) { qui_set_smooth_scroll(app_, on ? 1 : 0); }
   // Makes drawers snap instead of sliding.
@@ -780,6 +783,7 @@ class Ui {
     s.clip |= b.clip;
     s.scroll |= b.scroll;
     s.hit |= b.hit;
+    s.select |= b.select;
     if (!s.gestures) s.gestures = b.gestures;
     if (!s.role) s.role = b.role;
     if (s.label.empty()) s.label = b.label;
@@ -831,6 +835,7 @@ class Ui {
     if (s.scroll) u8(wire::OpScroll);
     if (s.scroll_to) f32_op(wire::OpScrollTo, *s.scroll_to);
     if (s.hit) u8_op(wire::OpHit, 1);
+    if (s.select) u8(wire::OpSelect);
     if (s.gestures) u8_op(wire::OpGestures, s.gestures);
     if (s.role) u8_op(wire::OpRole, s.role);
     if (!s.label.empty()) str(wire::OpLabel, s.label);

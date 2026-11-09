@@ -83,9 +83,10 @@ A strict flexbox subset that maps directly to CSS.
 - `Z` sets paint and hit order among siblings. Use it to raise overlapping panels: unlike reordering children, it keeps their scroll position and focus on the web. Give overlapping panels `Hit: true` so the pointer and wheel stop at them.
 
 - `Gradient: qui.Gradient{From, To, Angle}` fills a box; on `TextStyle` it colors the letters across the text box (keep such text fit-width). Angles are CSS degrees. `Shadow: qui.BoxShadow{Color, Blur, Y}` paints outside the box, so a bright color with no `Y` is a glow. `TextStyle.Tracking` is letter spacing in px; large headings look best around `-0.04 * Size`.
+- `Select: true` lets the mouse select the text inside, even under `Hit` boxes: drag, double-click a word, triple-click a text, Ctrl+C copies. `ui.SelectedText()` (C++ `selected_text()`) returns it for a Copy menu item.
 - `ScrollTo: &offset` sets a `Scroll` box's offset for that frame. Animate it yourself for smooth anchors, and stop sending it when done so the user can scroll. A zero-height `Hit` box inside the scroller reports its viewport-relative `Y` even offscreen, which gives you scroll position, reveal-on-scroll and scroll-spy. Web scrolling does not wake the loop, so run a ticker calling `ui.Wake()` for those.
 
-`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Gestures Role Label Key Class`
+`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Gestures Role Label Key Class Select` (C++ `select` comes last)
 
 `TextStyle` fields, in order: `Size Bold Mono Ellipsis Color W Align Role Gradient Tracking Class`. Presets: `Body H1 H2 Small Code`.
 

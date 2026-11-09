@@ -31,24 +31,24 @@ func RGBA(r, g, b, a uint8) Color {
 func RGB(r, g, b uint8) Color { return RGBA(r, g, b, 255) }
 
 type Style struct {
-	W, H                   Size
-	MinW, MaxW, MinH, MaxH float32
-	Pad                    Edges
-	Gap                    float32
-	Align, Justify         Align
-	Absolute               bool
-	X, Y                   float32
-	Z                      int32
-	Bg, Fg, Border         Color
-	BorderW, Radius        float32
-	Opacity                float32
-	Gradient               Gradient
-	Shadow                 BoxShadow
-	Clip, Scroll, Hit      bool
-	ScrollTo               *float32
-	Gestures               Gestures
-	Role                   Role
-	Label, Key             string
+	W, H                      Size
+	MinW, MaxW, MinH, MaxH    float32
+	Pad                       Edges
+	Gap                       float32
+	Align, Justify            Align
+	Absolute                  bool
+	X, Y                      float32
+	Z                         int32
+	Bg, Fg, Border            Color
+	BorderW, Radius           float32
+	Opacity                   float32
+	Gradient                  Gradient
+	Shadow                    BoxShadow
+	Clip, Scroll, Hit, Select bool
+	ScrollTo                  *float32
+	Gestures                  Gestures
+	Role                      Role
+	Label, Key                string
 	// Class names registered with Ui.Class, separated by spaces.
 	Class string
 }
@@ -604,6 +604,9 @@ func (u *Ui) emitStyle(s *Style) {
 	}
 	if s.Hit {
 		u.u8Op(opHit, 1)
+	}
+	if s.Select {
+		u.u8(opSelect)
 	}
 	if s.Gestures != 0 {
 		u.u8Op(opGestures, uint8(s.Gestures))
