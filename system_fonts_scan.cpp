@@ -77,6 +77,15 @@ bool same_name(std::string_view a, std::string_view b) {
   return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](unsigned char x, unsigned char y) { return std::tolower(x) == std::tolower(y); });
 }
 
+// Fallback should find upright sans faces before their bold, italic or serif siblings.
+int style_rank(std::string name) {
+  std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  int rank = 0;
+  for (const char *word : {"bold", "italic", "serif", "bd.", "bi."})
+    if (name.find(word) != std::string::npos) ++rank;
+  return rank;
+}
+
 std::vector<Installed> &installed() {
   static std::vector<Installed> list = [] {
     std::vector<std::filesystem::path> files;
@@ -85,7 +94,10 @@ std::vector<Installed> &installed() {
       for (const auto &entry : std::filesystem::directory_iterator(dir, error))
         if (has_font_extension(entry.path())) files.push_back(entry.path());
     }
-    std::stable_sort(files.begin(), files.end(), [](const auto &a, const auto &b) { return a.filename() < b.filename(); });
+    std::stable_sort(files.begin(), files.end(), [](const auto &a, const auto &b) {
+      const int rank_a = style_rank(a.filename().string()), rank_b = style_rank(b.filename().string());
+      return rank_a != rank_b ? rank_a < rank_b : a.filename() < b.filename();
+    });
     std::vector<Installed> out;
     const auto take = [&](std::string_view name, bool emoji) {
       for (auto it = files.begin(); it != files.end(); ++it) {

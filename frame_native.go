@@ -9,7 +9,7 @@ package qui
 #cgo windows pkg-config: --static sdl3 freetype2 harfbuzz
 #cgo windows LDFLAGS: -static
 #cgo android pkg-config: --static sdl3 freetype2 harfbuzz
-#cgo android LDFLAGS: -static-libstdc++ -llog -landroid
+#cgo android LDFLAGS: -static-libstdc++ -llog -landroid -Wl,-z,max-page-size=16384
 #include <stdlib.h>
 #include "qui_c.h"
 */
@@ -43,6 +43,8 @@ func (u *Ui) Close() { C.qui_close(u.app) }
 
 // Wake requests a frame. It is safe to call from any goroutine.
 func (u *Ui) Wake() { C.qui_wake(u.app) }
+
+func (u *Ui) consumeBack() { C.qui_consume_back(u.app) }
 
 func (u *Ui) submit() {
 	C.qui_frame_end(u.app, (*C.uint8_t)(unsafe.Pointer(unsafe.SliceData(u.buf))), C.size_t(len(u.buf)))

@@ -17,6 +17,13 @@
 #include <string_view>
 #include <utility>
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#include <jni.h>
+#include <pthread.h>
+#include <unistd.h>
+#endif
+
 namespace {
 
 using namespace qui;
@@ -39,6 +46,7 @@ uint32_t key_from_sdl(SDL_Keycode key) {
     case SDLK_PAGEUP: return KeyPageUp;
     case SDLK_PAGEDOWN: return KeyPageDown;
     case SDLK_KP_ENTER: return KeyEnter;
+    case SDLK_AC_BACK: return KeyEscape;
     default: break;
   }
   if (key >= SDLK_F1 && key <= SDLK_F12) return KeyF1 + (key - SDLK_F1);
@@ -145,6 +153,42 @@ int headless_frames() {
 
 void *gl_proc(const char *name) { return reinterpret_cast<void *>(SDL_GL_GetProcAddress(name)); }
 
+#if defined(__ANDROID__)
+void *pump_stdio_to_logcat(void *arg) {
+  const int fd = *static_cast<int *>(arg);
+  std::string pending;
+  char chunk[1024];
+  for (ssize_t n; (n = read(fd, chunk, sizeof(chunk))) > 0;) {
+    pending.append(chunk, static_cast<size_t>(n));
+    for (size_t end; (end = pending.find('\n')) != std::string::npos; pending.erase(0, end + 1))
+      __android_log_write(ANDROID_LOG_INFO, "qui", pending.substr(0, end).c_str());
+  }
+  return nullptr;
+}
+
+void move_task_to_back() {
+  auto *env = static_cast<JNIEnv *>(SDL_GetAndroidJNIEnv());
+  auto activity = static_cast<jobject>(SDL_GetAndroidActivity());
+  if (!env || !activity) return;
+  jclass type = env->GetObjectClass(activity);
+  env->CallBooleanMethod(activity, env->GetMethodID(type, "moveTaskToBack", "(Z)Z"), JNI_TRUE);
+  env->DeleteLocalRef(type);
+  env->DeleteLocalRef(activity);
+}
+
+void capture_stdio() {
+  static int pipes[2];
+  static bool started = false;
+  if (started || pipe(pipes) != 0) return;
+  started = true;
+  dup2(pipes[1], 1);
+  dup2(pipes[1], 2);
+  setvbuf(stderr, nullptr, _IOLBF, 0);
+  pthread_t thread;
+  if (pthread_create(&thread, nullptr, pump_stdio_to_logcat, &pipes[0]) == 0) pthread_detach(thread);
+}
+#endif
+
 }  // namespace
 
 struct qui_app {
@@ -158,6 +202,7 @@ struct qui_app {
   int frames = 0;
   int pixel_w = 0, pixel_h = 0;
   float dpr = 1, logical_w = 0, logical_h = 0;
+  float inset_top = 0, inset_right = 0, inset_bottom = 0, inset_left = 0;
   std::string shot_path, tree_path, wire_path;
   std::vector<uint8_t> last_wire, results;
   std::vector<uint32_t> capture;
@@ -170,6 +215,7 @@ struct qui_app {
   uint64_t hovered = 0, pressed = 0, focused = 0, clicked = 0, right_clicked = 0;
   uint64_t drag_start = 0, drag_end = 0, scrollbar_hovered = 0, scrollbar_dragged = 0;
   float scrollbar_grab = 0;
+  bool back_pending = false, back_consumed = false;
   bool dragging = false, focus_ring = false, selecting = false, caret_on = true, text_cursor = false, pointer_down = false, pointer_tapped = false;
   float engine_ms = 0;
   std::vector<uint32_t> keys;
@@ -193,28 +239,40 @@ struct qui_app {
     if (env("QUI_DPR").empty()) dpr = std::max(0.25f, SDL_GetWindowDisplayScale(window));
     logical_w = static_cast<float>(pixel_w) / dpr;
     logical_h = static_cast<float>(pixel_h) / dpr;
+    SDL_Rect safe{};
+    int window_w = 0, window_h = 0;
+    if (SDL_GetWindowSafeArea(window, &safe) && SDL_GetWindowSize(window, &window_w, &window_h)) {
+      const float scale = SDL_GetWindowPixelDensity(window) / dpr;
+      inset_left = static_cast<float>(safe.x) * scale;
+      inset_top = static_cast<float>(safe.y) * scale;
+      inset_right = static_cast<float>(window_w - safe.x - safe.w) * scale;
+      inset_bottom = static_cast<float>(window_h - safe.y - safe.h) * scale;
+    }
   }
 
   bool create_gl(Uint64 flags, const char *title, int width, int height) {
-    window = SDL_CreateWindow(title, width, height, flags | SDL_WINDOW_OPENGL);
-    if (!window) return false;
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 #if defined(_WIN32)
     bool es = false;
 #else
     bool es = true;
 #endif
-    const auto attempt = [&](bool use_es) {
+    const auto configure = [&](bool use_es) {
       es = use_es;
       SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, use_es ? SDL_GL_CONTEXT_PROFILE_ES : SDL_GL_CONTEXT_PROFILE_CORE);
       SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
       SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, use_es ? 0 : 3);
-      gl = SDL_GL_CreateContext(window);
     };
-    attempt(es);
-    if (!gl) attempt(!es);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    configure(es);
+    window = SDL_CreateWindow(title, width, height, flags | SDL_WINDOW_OPENGL);
+    if (!window) return false;
+    gl = SDL_GL_CreateContext(window);
+    if (!gl) {
+      configure(!es);
+      gl = SDL_GL_CreateContext(window);
+    }
     if (gl) {
       SDL_GL_MakeCurrent(window, gl);
       SDL_GL_SetSwapInterval(1);
@@ -601,6 +659,8 @@ struct qui_app {
       case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
       case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
       case SDL_EVENT_WINDOW_EXPOSED:
+      case SDL_EVENT_WINDOW_SAFE_AREA_CHANGED:
+      case SDL_EVENT_DID_ENTER_FOREGROUND:
         dirty = true;
         force_full = true;
         break;
@@ -696,6 +756,7 @@ struct qui_app {
         dirty = true;
         break;
       case SDL_EVENT_KEY_DOWN:
+        if (e.key.key == SDLK_AC_BACK) back_pending = true;
         on_key(key_from_sdl(e.key.key), mods_from_sdl(e.key.mod));
         break;
       case SDL_EVENT_TEXT_INPUT:
@@ -906,7 +967,7 @@ struct qui_app {
     for (const ShaderDraw &draw : engine.previous.shaders) text_blob += backend->shader_error(draw.hash);
     results.assign(text_at + text_blob.size(), 0);
     uint8_t *p = results.data();
-    const float header[] = {logical_w, logical_h, dpr, dt, pointer_x, pointer_y};
+    const float header[] = {logical_w - inset_left - inset_right, logical_h - inset_top - inset_bottom, dpr, dt, pointer_x, pointer_y};
     const uint32_t offsets[] = {static_cast<uint32_t>(keys_at), static_cast<uint32_t>(keys.size() / 2), static_cast<uint32_t>(text_at), pointer_down || pointer_tapped ? 1u : 0u};
     pointer_tapped = false;
     std::memcpy(p, &kMagic, 4);
@@ -977,6 +1038,10 @@ struct qui_app {
     if (!wire_path.empty()) last_wire.assign(wire, wire + len);
     if (window && !headless) read_size();
     engine.decode(wire, len);
+    engine.insets[0] = inset_top;
+    engine.insets[1] = inset_right;
+    engine.insets[2] = inset_bottom;
+    engine.insets[3] = inset_left;
     engine.layout(logical_w, logical_h, dpr);
     if (engine.focus_request) {
       set_focus(engine.focus_request, false);
@@ -1002,6 +1067,12 @@ struct qui_app {
     if (!damage.empty() && !headless) present(gl ? full : damage);
     if (animating()) next_tick = now() + tick_interval();
     if (engine.wants_another_frame) dirty = true;
+    if (back_pending) {
+#if defined(__ANDROID__)
+      if (!back_consumed) move_task_to_back();
+#endif
+      back_pending = back_consumed = false;
+    }
     if (!headless && !scrollbar_dragged) update_hover();
     const double t = now();
     dt = static_cast<float>(t - last_frame_time);
@@ -1035,6 +1106,8 @@ extern "C" {
 
 void qui_set_app_id(const char *id) { g_app_id = id ? id : ""; }
 
+void qui_consume_back(qui_app *app) { app->back_consumed = true; }
+
 void qui_wake(qui_app *app) {
   if (!app || app->headless) return;
   SDL_Event event{};
@@ -1043,6 +1116,9 @@ void qui_wake(qui_app *app) {
 }
 
 qui_app *qui_open(const char *title, int width, int height) {
+#if defined(__ANDROID__)
+  capture_stdio();
+#endif
   auto *app = new qui_app();
   app->open(title, width, height);
   return app;

@@ -330,7 +330,7 @@ func (a *app) frame() {
 	a.w, a.h, a.dpr = ui.Width(), ui.Height(), ui.Dpr()
 	a.narrow = a.w < 860
 	a.viewFade = min(1, a.viewFade+a.dt/0.16)
-	if ui.KeyPressed(qui.KeyEscape) {
+	if a.drawer != drawerNone && ui.KeyPressed(qui.KeyEscape) {
 		a.drawer = drawerNone
 	}
 	ui.Stack(qui.Style{W: qui.Fill(), H: qui.Fill(), Bg: page}, func() {

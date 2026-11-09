@@ -41,6 +41,8 @@ func (u *Ui) Close() { u.onWake.Release() }
 // Wake requests a frame. It is safe to call from any goroutine.
 func (u *Ui) Wake() { u.bridge.Call("invalidate") }
 
+func (u *Ui) consumeBack() {}
+
 func (u *Ui) submit() {
 	if len(u.buf) > u.outCap {
 		u.outCap = len(u.buf) * 2

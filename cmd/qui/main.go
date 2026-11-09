@@ -148,6 +148,9 @@ func build(o options) error {
 	if o.target == "windows" {
 		return buildWindows(app, out, o)
 	}
+	if o.target == "android" {
+		return buildAndroid(app, out, o)
+	}
 	// Resolved per app so the JS always matches the wire version the app was built against.
 	quiDir, err := goOutput(app, "list", "-m", "-f", "{{.Dir}}", quiModule)
 	if err != nil {

@@ -251,13 +251,16 @@ class Ui {
     return result;
   }
 
-  bool key_pressed(uint32_t key, uint32_t mods = 0) const {
+  bool key_pressed(uint32_t key, uint32_t mods = 0) {
     if (!res_) return false;
     const uint32_t at = header_u32(32), count = header_u32(36);
     for (uint32_t i = 0; i < count; ++i) {
       uint32_t event[2];
       std::memcpy(event, res_ + at + i * 8, 8);
-      if (event[0] == key && event[1] == mods) return true;
+      if (event[0] == key && event[1] == mods) {
+        if (key == KeyEscape) qui_consume_back(app_);
+        return true;
+      }
     }
     return false;
   }

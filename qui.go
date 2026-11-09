@@ -345,6 +345,9 @@ func (u *Ui) KeyPressed(key Key, mods ...Mods) bool {
 	for i := uint32(0); i < count; i++ {
 		event := u.res[at+i*8:]
 		if Key(binary.LittleEndian.Uint32(event)) == key && Mods(binary.LittleEndian.Uint32(event[4:])) == want {
+			if key == KeyEscape {
+				u.consumeBack()
+			}
 			return true
 		}
 	}

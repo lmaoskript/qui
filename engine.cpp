@@ -775,6 +775,7 @@ void Engine::layout(float width, float height, float scale) {
   root.h_val = height;
   root.w = width;
   root.h = height;
+  for (int side = 0; side < 4; ++side) root.pad[side] = insets[side];
 
   const int count = static_cast<int>(nodes.size());
   for (int i = 0; i < count; ++i)
@@ -1092,6 +1093,12 @@ void Engine::paint() {
   frame.width = static_cast<int>(std::round(nodes[0].w * dpr));
   frame.height = static_cast<int>(std::round(nodes[0].h * dpr));
   frame.clear = kThemes[theme][TokenBackground];
+  // The system bars sit outside the root's padding, so they show the clear color.
+  if (insets[0] > 0 || insets[1] > 0 || insets[2] > 0 || insets[3] > 0) {
+    const int32_t child = nodes[0].first_child;
+    if (child >= 0 && nodes[static_cast<size_t>(child)].bg && nodes[static_cast<size_t>(child)].w_mode == SizeFill && nodes[static_cast<size_t>(child)].h_mode == SizeFill)
+      frame.clear = resolve(nodes[static_cast<size_t>(child)].bg);
+  }
   paint_node(0, 1, IRect{0, 0, frame.width, frame.height});
 }
 
