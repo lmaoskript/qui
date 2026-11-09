@@ -1,10 +1,10 @@
-export const Version = 14;
+export const Version = 15;
 
 export const Op = {End: 0, Open: 1, Frame: 2, Dir: 3, Width: 4, Height: 5, MinW: 6, MaxW: 7, MinH: 8, MaxH: 9, Pad: 10, Gap: 11, Align: 12, Justify: 13, Pos: 14, Bg: 15, Fg: 16, Border: 17, Radius: 18, Opacity: 19, Clip: 20, Scroll: 21, Hit: 22, Role: 23, Label: 24, Text: 25, FontSize: 26, Weight: 27, Mono: 28, Ellipsis: 29, Virtual: 30, Item: 31, Src: 32, Uniform: 33, Fps: 34, Placeholder: 35, Multiline: 36, Password: 37, Focus: 38, Z: 39, Gradient: 40, Shadow: 41, Tracking: 42, ScrollTo: 43, Gestures: 44, Palette: 45, ImageData: 46, Img: 47, Fit: 48, Span: 49, Prepend: 50, Jump: 51, ImageFree: 52, PassthroughNav: 53, Select: 54};
 export const Kind = {Box: 0, Text: 1, Button: 2, List: 3, Shader: 4, Input: 5, Image: 6};
 export const Dir = {Column: 0, Row: 1, Stack: 2};
 export const Size = {Fit: 0, Fill: 1, Px: 2, Pct: 3};
-export const Fit = {Cover: 0, Contain: 1, Stretch: 2};
+export const Fit = {Cover: 0, Contain: 1, Stretch: 2, Pixelated: 16, Bicubic: 32};
 export const Span = {Bold: 1, Mono: 2, Italic: 4, Underline: 8, Strike: 16, Image: 32};
 export const Align = {Start: 0, Center: 1, End: 2, Stretch: 3, Between: 4};
 export const Role = {None: 0, Heading: 1, Link: 2, Image: 3, Main: 4, Nav: 5};

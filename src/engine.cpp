@@ -1386,7 +1386,12 @@ struct CropRect {
   float x0, y0, x1, y1;
 };
 
-void resample(const std::vector<uint8_t> &src, uint32_t sw, uint32_t sh, CropRect crop, int dw, int dh, std::vector<uint8_t> &out) {
+float cubic(float t) {
+  t = std::abs(t);
+  return t <= 1 ? (1.5f * t - 2.5f) * t * t + 1 : t < 2 ? ((-0.5f * t + 2.5f) * t - 4) * t + 2 : 0;
+}
+
+void resample(const std::vector<uint8_t> &src, uint32_t sw, uint32_t sh, CropRect crop, int dw, int dh, uint8_t sampling, std::vector<uint8_t> &out) {
   out.assign(static_cast<size_t>(dw) * static_cast<size_t>(dh) * 4, 0);
   const float step_x = (crop.x1 - crop.x0) / static_cast<float>(dw), step_y = (crop.y1 - crop.y0) / static_cast<float>(dh);
   const bool box = step_x > 1.f || step_y > 1.f;
@@ -1411,6 +1416,35 @@ void resample(const std::vector<uint8_t> &src, uint32_t sw, uint32_t sh, CropRec
             weight += 1;
           }
         }
+      } else if (sampling & FitPixelated) {
+        const int ix = std::clamp(static_cast<int>(sx0 + step_x / 2), 0, static_cast<int>(sw) - 1);
+        const int iy = std::clamp(static_cast<int>(sy0 + step_y / 2), 0, static_cast<int>(sh) - 1);
+        const uint8_t *p = &src[(static_cast<size_t>(iy) * sw + static_cast<size_t>(ix)) * 4];
+        const float a = static_cast<float>(p[3]);
+        acc[0] = static_cast<float>(p[0]) * a;
+        acc[1] = static_cast<float>(p[1]) * a;
+        acc[2] = static_cast<float>(p[2]) * a;
+        acc[3] = a;
+        weight = 1;
+      } else if (sampling & FitBicubic) {
+        const float fx = sx0 + step_x / 2 - 0.5f, fy = sy0 + step_y / 2 - 0.5f;
+        const int ix = static_cast<int>(std::floor(fx)), iy = static_cast<int>(std::floor(fy));
+        const float tx = fx - static_cast<float>(ix), ty = fy - static_cast<float>(iy);
+        for (int j = -1; j <= 2; ++j) {
+          const float wy = cubic(static_cast<float>(j) - ty);
+          const auto sy = static_cast<size_t>(std::clamp(iy + j, 0, static_cast<int>(sh) - 1));
+          for (int i = -1; i <= 2; ++i) {
+            const float w = wy * cubic(static_cast<float>(i) - tx);
+            const auto sx = static_cast<size_t>(std::clamp(ix + i, 0, static_cast<int>(sw) - 1));
+            const uint8_t *p = &src[(sy * sw + sx) * 4];
+            const float a = static_cast<float>(p[3]) * w;
+            acc[0] += static_cast<float>(p[0]) * a;
+            acc[1] += static_cast<float>(p[1]) * a;
+            acc[2] += static_cast<float>(p[2]) * a;
+            acc[3] += a;
+          }
+        }
+        weight = 1;
       } else {
         const float fx = std::clamp(sx0 + step_x / 2 - 0.5f, 0.f, static_cast<float>(sw - 1));
         const float fy = std::clamp(sy0 + step_y / 2 - 0.5f, 0.f, static_cast<float>(sh - 1));
@@ -1433,10 +1467,10 @@ void resample(const std::vector<uint8_t> &src, uint32_t sw, uint32_t sh, CropRec
       }
       uint8_t *o = &out[(static_cast<size_t>(y) * static_cast<size_t>(dw) + static_cast<size_t>(x)) * 4];
       if (acc[3] > 0) {
-        o[0] = static_cast<uint8_t>(acc[0] / acc[3] + 0.5f);
-        o[1] = static_cast<uint8_t>(acc[1] / acc[3] + 0.5f);
-        o[2] = static_cast<uint8_t>(acc[2] / acc[3] + 0.5f);
-        o[3] = static_cast<uint8_t>(acc[3] / weight + 0.5f);
+        o[0] = static_cast<uint8_t>(std::clamp(acc[0] / acc[3], 0.f, 255.f) + 0.5f);
+        o[1] = static_cast<uint8_t>(std::clamp(acc[1] / acc[3], 0.f, 255.f) + 0.5f);
+        o[2] = static_cast<uint8_t>(std::clamp(acc[2] / acc[3], 0.f, 255.f) + 0.5f);
+        o[3] = static_cast<uint8_t>(std::min(acc[3] / weight, 255.f) + 0.5f);
       }
     }
   }
@@ -1463,6 +1497,8 @@ const Engine::ImageRegion &Engine::image_region_for(uint64_t key, uint8_t fit, i
   const float sw = static_cast<float>(img.w), sh = static_cast<float>(img.h);
   CropRect crop{0, 0, sw, sh};
   int dw = box_w, dh = box_h;
+  const uint8_t sampling = fit & (FitPixelated | FitBicubic);
+  fit &= 3;
   if (fit == FitContain) {
     const float scale = std::min(static_cast<float>(box_w) / sw, static_cast<float>(box_h) / sh);
     dw = std::max(1, static_cast<int>(std::round(sw * scale)));
@@ -1473,7 +1509,7 @@ const Engine::ImageRegion &Engine::image_region_for(uint64_t key, uint8_t fit, i
     crop = {(sw - view_w) / 2, (sh - view_h) / 2, (sw + view_w) / 2, (sh + view_h) / 2};
   }
   std::vector<uint8_t> pixels;
-  resample(img.rgba, img.w, img.h, crop, dw, dh, pixels);
+  resample(img.rgba, img.w, img.h, crop, dw, dh, sampling, pixels);
 
   ImageRegion &region = image_regions[cache_key];
   if (region.ok && (region.source != key || region.w != dw || region.h != dh)) {

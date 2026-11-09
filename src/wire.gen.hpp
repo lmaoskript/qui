@@ -6,7 +6,7 @@ namespace qui {
 
 namespace wire {
 
-inline constexpr uint8_t kVersion = 14;
+inline constexpr uint8_t kVersion = 15;
 inline constexpr int kThemeCount = 4;
 inline constexpr int kTokenCount = 19;
 
@@ -95,6 +95,8 @@ enum Fit : uint8_t {
   FitCover = 0,
   FitContain = 1,
   FitStretch = 2,
+  FitPixelated = 16,
+  FitBicubic = 32,
 };
 
 enum SpanFlag : uint8_t {

@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 14
+version 15
 
 kind Box 0
 kind Text 1
@@ -23,6 +23,8 @@ size Pct 3
 fit Cover 0
 fit Contain 1
 fit Stretch 2
+fit Pixelated 16
+fit Bicubic 32
 
 span Bold 1
 span Mono 2

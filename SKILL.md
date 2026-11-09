@@ -207,7 +207,7 @@ if !ui.HasImage("avatar:42") {
 ui.Image("avatar:42", qui.Style{W: qui.Px(40), H: qui.Px(40), Radius: 20, Clip: true})
 ```
 
-`LoadImage` sends pixels once under your key, so load them off the render path as they arrive (decode on a thread, then `Wake`). `Image(key, style, fit)` refers to it by key; `FitCover` (default) crops, `FitContain` letterboxes, `FitStretch` distorts. With no size it uses the pixel size, with only `W` it keeps the aspect ratio. Radius rounds the corners and a square with `Radius = W/2` is a circle. The engine resamples to the on-screen size and keeps its own copy, so load images near the size you show them. On the web it is a `<canvas>`. C++: `ui.load_image(key, w, h, rgba)`, `ui.has_image(key)`, `ui.image(key, style, fit)`.
+`LoadImage` sends pixels once under your key, so load them off the render path as they arrive (decode on a thread, then `Wake`). `Image(key, style, fit)` refers to it by key; `FitCover` (default) crops, `FitContain` letterboxes, `FitStretch` distorts; add `| FitPixelated` or `| FitBicubic` to change how it upscales (bilinear by default). With no size it uses the pixel size, with only `W` it keeps the aspect ratio. Radius rounds the corners and a square with `Radius = W/2` is a circle. The engine resamples to the on-screen size and keeps its own copy, so load images near the size you show them. On the web it is a `<canvas>`. C++: `ui.load_image(key, w, h, rgba)`, `ui.has_image(key)`, `ui.image(key, style, fit)`.
 
 ## Rich text
 

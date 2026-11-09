@@ -1,4 +1,4 @@
-import { Align, Dir, Flag, Gesture, Key, Kind, Mod, Op, Role, Size, Themes, Tokens, Version } from "./wire.gen.js";
+import { Align, Dir, Fit, Flag, Gesture, Key, Kind, Mod, Op, Role, Size, Themes, Tokens, Version } from "./wire.gen.js";
 
 const HEADER = 64;
 const SLOT = 56;
@@ -978,7 +978,10 @@ class Patcher {
       else el.removeAttribute("data-qp");
       if (node.gestures & Gesture.Pinch) this.bindPinchWheel();
       if (node.kind === Kind.Shader) this.patchShader(el, node);
-      if (node.kind === Kind.Image) el.style.objectFit = ["cover", "contain", "fill"][node.fit ?? 0];
+      if (node.kind === Kind.Image) {
+        el.style.objectFit = ["cover", "contain", "fill"][(node.fit ?? 0) & 3];
+        el.style.imageRendering = (node.fit ?? 0) & Fit.Pixelated ? "pixelated" : "";
+      }
       if (node.kind === Kind.Input) this.patchField(el, node);
     }
     if (node.kind === Kind.Image) {

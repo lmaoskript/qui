@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 14
+const wireVersion = 15
 
 const (
 	opEnd            = 0
@@ -104,9 +104,11 @@ const (
 )
 
 const (
-	FitCover   ImageFit = 0
-	FitContain ImageFit = 1
-	FitStretch ImageFit = 2
+	FitCover     ImageFit = 0
+	FitContain   ImageFit = 1
+	FitStretch   ImageFit = 2
+	FitPixelated ImageFit = 16
+	FitBicubic   ImageFit = 32
 )
 
 const (
