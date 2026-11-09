@@ -44,6 +44,7 @@ struct FontManager::FontInstance {
   hb_font_t *paint_font = nullptr;
   float pixel_size = 0.0f;
   float weight = 0.0f;
+  bool oblique = false;
   float raster_scale = 1.0f;
   int face_index = 0;
   bool ligatures_enabled = true;
@@ -86,14 +87,14 @@ FontInstanceId FontManager::load_font(const std::string &path, float pixel_size,
 FontInstanceId FontManager::load_font_face(const std::string &path,
                                            int face_index, float pixel_size,
                                            bool ligatures_enabled,
-                                           bool subpixel, float weight) {
+                                           bool subpixel, float weight, bool oblique) {
   if (!library_ || pixel_size <= 0.0f)
     return 0;
 
   for (const auto &font : fonts_) {
     if (font && font->path == path && font->face_index == face_index &&
         font->pixel_size == pixel_size && font->subpixel == subpixel &&
-        font->weight == weight)
+        font->weight == weight && font->oblique == oblique)
       return font->id;
   }
 
@@ -164,6 +165,7 @@ FontInstanceId FontManager::load_font_face(const std::string &path,
   instance->face_index = face_index;
   instance->pixel_size = pixel_size;
   instance->weight = weight;
+  instance->oblique = oblique;
   instance->ligatures_enabled = ligatures_enabled;
   instance->metrics.ascender =
       instance->face->size->metrics.ascender / 64.0f * instance->raster_scale;
@@ -424,6 +426,10 @@ const CachedGlyph *FontManager::get_glyph(FontInstanceId font,
   glyph.glyph_id = glyph_id;
   FT_Face face = instance.face;
   const FT_Int32 load_flags = instance.load_flags | FT_LOAD_COLOR;
+  if (instance.oblique) {
+    FT_Matrix slant{0x10000, 0x3600, 0, 0x10000};
+    FT_Set_Transform(face, &slant, nullptr);
+  }
   if (FT_Load_Glyph(face, glyph_id, load_flags) != 0) {
     std::fprintf(stderr, "font: FT_Load_Glyph failed for glyph %u\n",
                  static_cast<unsigned>(glyph_id));

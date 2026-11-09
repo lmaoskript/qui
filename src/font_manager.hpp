@@ -77,7 +77,8 @@ class FontManager {
                            bool ligatures_enabled = true, bool subpixel = false);
   FontInstanceId load_font_face(const std::string &path, int face_index,
                                 float pixel_size, bool ligatures_enabled = true,
-                                bool subpixel = false, float weight = 0.0f);
+                                bool subpixel = false, float weight = 0.0f,
+                                bool oblique = false);
   bool valid_font(FontInstanceId id) const;
   hb_font_t *hb_font(FontInstanceId id) const;
   FT_Face ft_face(FontInstanceId id) const;

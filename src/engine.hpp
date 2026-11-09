@@ -309,7 +309,7 @@ class Engine {
   RoundClip round_clip_;
 
   FontInstanceId font_for(const Node &node);
-  FontInstanceId font_for(const Node &node, bool bold, bool mono);
+  FontInstanceId font_for(const Node &node, bool bold, bool mono, bool italic = false);
   const ShapedLine &shape_paragraph(const Node &node, std::string_view para, uint32_t para_byte);
   uint32_t resolve(uint32_t color) const;
   void intrinsic_width(Node &node);

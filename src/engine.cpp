@@ -406,7 +406,7 @@ const ShapedLine &Engine::shape_paragraph(const Node &node, std::string_view par
     TextStyleSpan t;
     t.start_byte = std::max(s.start, para_byte) - para_byte;
     t.end_byte = std::min(s.end, para_end) - para_byte;
-    t.font = font_for(node, node.weight != 0 || (s.flags & SpanBold), node.mono || (s.flags & SpanMono));
+    t.font = font_for(node, node.weight != 0 || (s.flags & SpanBold), node.mono || (s.flags & SpanMono), (s.flags & SpanItalic) != 0);
     t.packed_rgba = s.fg;
     t.ligatures_enabled = node.tracking == 0;
     span_scratch.push_back(t);
@@ -414,13 +414,13 @@ const ShapedLine &Engine::shape_paragraph(const Node &node, std::string_view par
   return shaper.shape_line(para, span_scratch, {node.font, 0, node.tracking == 0, tracking});
 }
 
-FontInstanceId Engine::font_for(const Node &node, bool bold, bool mono) {
+FontInstanceId Engine::font_for(const Node &node, bool bold, bool mono, bool italic) {
   const float size = (node.font_size > 0 ? node.font_size : kDefaultFontSize) * dpr;
   const int rounded = static_cast<int>(size + 0.5f);
-  const uint64_t key = (static_cast<uint64_t>(rounded) << 2) | (mono ? 2u : 0u) | (bold ? 1u : 0u);
+  const uint64_t key = (static_cast<uint64_t>(rounded) << 3) | (mono ? 2u : 0u) | (bold ? 1u : 0u) | (italic ? 4u : 0u);
   if (const auto it = font_cache_.find(key); it != font_cache_.end()) return it->second;
   const SystemFont &face = mono ? (bold ? mono_bold_ : mono_regular_) : (bold ? sans_bold_ : sans_regular_);
-  const FontInstanceId id = fonts.load_font_face(face.path, face.index, static_cast<float>(rounded), true, !mono, face.weight);
+  const FontInstanceId id = fonts.load_font_face(face.path, face.index, static_cast<float>(rounded), true, !mono, face.weight, italic);
   font_cache_[key] = id;
   return id;
 }
