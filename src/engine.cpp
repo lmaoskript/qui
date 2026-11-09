@@ -327,6 +327,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         node.bottom = in.read<uint8_t>() != 0;
         break;
       case OpItem: node.item = in.read<uint32_t>(); break;
+      case OpPrepend: node.prepend = in.read<uint32_t>(); break;
       case OpSrc: node.src = in.str(); break;
       case OpFps: node.fps = in.read<float>(); break;
       case OpPlaceholder: node.placeholder = in.str(); break;
@@ -666,6 +667,13 @@ void Engine::place_list(Node &node) {
   state.est = node.est > 0 ? node.est : 32;
   state.count = node.count;
   state.viewport = std::max(0.f, node.h - node.pad[0] - node.pad[2]);
+  if (node.prepend && !first_layout) {
+    std::unordered_map<uint32_t, float> shifted;
+    shifted.reserve(state.heights.size());
+    for (const auto &[index, height] : state.heights) shifted[index + node.prepend] = height;
+    state.heights.swap(shifted);
+    state.anchor += node.prepend;
+  }
   if (state.anchor >= state.count) state.anchor = state.count ? state.count - 1 : 0;
 
   const float left = node.x + node.pad[3];

@@ -178,6 +178,7 @@ function decode(bytes, length) {
       case Op.Ellipsis: node.ellipsis = true; break;
       case Op.Virtual: node.count = r.u32(); node.est = r.f32(); node.bottom = r.u8() !== 0; break;
       case Op.Item: node.item = r.u32(); break;
+      case Op.Prepend: node.prepend = r.u32(); break;
       case Op.Src: node.src = r.str(); break;
       case Op.Fps: node.fps = r.f32(); break;
       case Op.Placeholder: node.placeholder = r.str(); break;

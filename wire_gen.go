@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 8
+const wireVersion = 9
 
 const (
 	opEnd         = 0
@@ -53,6 +53,7 @@ const (
 	opImg         = 47
 	opFit         = 48
 	opSpan        = 49
+	opPrepend     = 50
 )
 
 const (

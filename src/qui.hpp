@@ -127,6 +127,9 @@ struct Stats {
 struct ListOptions {
   Style style{};
   bool bottom = false;
+  // Items inserted at the front this frame; the rows on screen keep their place.
+  // Native only: the browser ignores it.
+  uint32_t prepend = 0;
 };
 
 struct Uniform {
@@ -398,8 +401,12 @@ class Ui {
     u32(count);
     f32(estimate);
     u8(options.bottom ? 1 : 0);
+    if (options.prepend) {
+      u8(wire::OpPrepend);
+      u32(options.prepend);
+    }
     const Response result = lookup(id);
-    uint32_t first = result.first, visible = result.count;
+    uint32_t first = result.first + options.prepend, visible = result.count;
     if (!result.found || visible == 0) {
       visible = std::min<uint32_t>(count, 32);
       first = options.bottom && count > visible ? count - visible : 0;

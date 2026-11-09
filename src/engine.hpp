@@ -68,7 +68,7 @@ struct Node {
   uint32_t uniform_first = 0, uniform_count = 0;
   uint64_t image = 0;
   uint8_t fit = 0;
-  uint32_t span_first = 0, span_count = 0;
+  uint32_t span_first = 0, span_count = 0, prepend = 0;
 
   float iw = 0, ih = 0, x = 0, y = 0, w = 0, h = 0;
   uint32_t line_first = 0, line_count = 0;

@@ -119,6 +119,10 @@ type Stats struct {
 type ListOptions struct {
 	Style  Style
 	Bottom bool
+	// Prepend says that many items were inserted at the front of the list this
+	// frame, so the rows on screen keep their place. Native only: the browser
+	// ignores it.
+	Prepend int
 }
 
 type Uniform struct {
@@ -288,8 +292,12 @@ func (u *Ui) List(key string, count int, estimate float32, o ListOptions, row fu
 	} else {
 		u.u8(0)
 	}
+	if o.Prepend > 0 {
+		u.u8(opPrepend)
+		u.u32(uint32(o.Prepend))
+	}
 	result := u.lookup(id)
-	first, visible := int(result.First), int(result.Count)
+	first, visible := int(result.First)+o.Prepend, int(result.Count)
 	if !result.Found || visible == 0 {
 		visible = min(count, 32)
 		first = 0
