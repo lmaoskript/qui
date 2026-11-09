@@ -299,7 +299,10 @@ struct qui_app {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     configure(es);
     window = SDL_CreateWindow(title, width, height, flags | SDL_WINDOW_OPENGL);
-    if (!window) return false;
+    if (!window) {
+      std::fprintf(stderr, "qui: OpenGL is unavailable (%s), using the CPU renderer\n", SDL_GetError());
+      return false;
+    }
     gl = SDL_GL_CreateContext(window);
     if (!gl) {
       configure(!es);
