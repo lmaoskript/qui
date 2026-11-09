@@ -9,6 +9,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -100,6 +101,19 @@ struct Response {
   Swipe swipe = Swipe::None;
   uint32_t first = 0, count = 0;
   std::string_view error{};
+};
+
+inline constexpr uint8_t SpanBold = wire::SpanBold, SpanMono = wire::SpanMono, SpanItalic = wire::SpanItalic, SpanUnderline = wire::SpanUnderline, SpanStrike = wire::SpanStrike;
+
+struct Span {
+  uint32_t start = 0, end = 0;
+  uint8_t flags = 0;
+  Color fg = 0, bg = 0;
+  std::string_view link{};
+};
+
+struct RichResult {
+  std::string_view hovered{}, clicked{}, right_clicked{};
 };
 
 struct Stats {
@@ -232,10 +246,40 @@ class Ui {
   template <class F>
   Response stack(const Style &style, F &&body) { return container(wire::DirStack, style, body); }
 
-  void text(std::string_view value, TextStyle style = Body) {
+  void text(std::string_view value, TextStyle style = Body) { text_impl(value, {}, style); }
+
+  // Text with styled spans (bold, monospace, colors, backgrounds, underline,
+  // strike-through) and clickable links, wrapped as one paragraph. Offsets are
+  // UTF-8 byte offsets. Spans must be sorted and must not overlap. A span with a
+  // link is reported by that string in the result, from the previous frame.
+  RichResult rich(std::string_view value, std::span<const Span> spans, TextStyle style = Body) {
+    return text_impl(value, spans, style);
+  }
+
+  RichResult text_impl(std::string_view value, std::span<const Span> spans, TextStyle style) {
+    RichResult out;
     if (!style.klass.empty()) style = resolve_text(style);
-    open(wire::KindText, {});
+    const uint64_t id = open(wire::KindText, {});
     str(wire::OpText, value);
+    for (const Span &s : spans) {
+      if (s.end <= s.start || s.end > value.size()) continue;
+      uint64_t span_id = 0;
+      if (!s.link.empty()) {
+        const std::string tagged = "link:" + std::string(s.link);
+        span_id = mix(id, tagged.data(), tagged.size());
+        const Response r = lookup(span_id);
+        if (r.hovered) out.hovered = s.link;
+        if (r.clicked) out.clicked = s.link;
+        if (r.right_clicked) out.right_clicked = s.link;
+      }
+      u8(wire::OpSpan);
+      u32(s.start);
+      u32(s.end);
+      u8(s.flags);
+      u32(s.fg);
+      u32(s.bg);
+      u64(span_id);
+    }
     if (style.size) f32_op(wire::OpFontSize, style.size);
     if (style.bold) u8_op(wire::OpWeight, 1);
     if (style.mono) u8(wire::OpMono);
@@ -247,6 +291,7 @@ class Ui {
     emit_gradient(style.gradient);
     if (style.tracking) f32_op(wire::OpTracking, style.tracking);
     u8(wire::OpEnd);
+    return out;
   }
 
   // Hands the engine straight (not premultiplied) RGBA pixels under `key`. Do it

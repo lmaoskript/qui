@@ -208,6 +208,19 @@ ui.Image("avatar:42", qui.Style{W: qui.Px(40), H: qui.Px(40), Radius: 20, Clip: 
 
 `LoadImage` sends pixels once under your key, so load them off the render path as they arrive (decode on a thread, then `Wake`). `Image(key, style, fit)` refers to it by key; `FitCover` (default) crops, `FitContain` letterboxes, `FitStretch` distorts. With no size it uses the pixel size, with only `W` it keeps the aspect ratio. Radius rounds the corners and a square with `Radius = W/2` is a circle. The engine resamples to the on-screen size and keeps its own copy, so load images near the size you show them. On the web it is a `<canvas>`. C++: `ui.load_image(key, w, h, rgba)`, `ui.has_image(key)`, `ui.image(key, style, fit)`.
 
+## Rich text
+
+```go
+r := ui.Rich(text, []qui.Span{
+	{Start: 6, End: 10, Flags: qui.SpanBold},
+	{Start: 15, End: 19, Flags: qui.SpanMono, Bg: Code},
+	{Start: 25, End: 31, Flags: qui.SpanUnderline, Fg: qui.Accent2, Link: "docs"},
+}, qui.TextStyle{W: qui.Fill()})
+if r.Clicked == "docs" { open() }
+```
+
+One paragraph that wraps across spans. Offsets are UTF-8 byte offsets; spans are sorted and must not overlap, and gaps are plain text. Flags: `SpanBold SpanMono SpanItalic SpanUnderline SpanStrike` (italic is accepted but not drawn yet). `Link` makes a span clickable and `Hovered`, `Clicked` and `RightClicked` name it, one frame late like any response. C++: `ui.rich(text, spans, style)` with `Span{.start, .end, .flags, .fg, .bg, .link}`. On the web it is real `<span>` and `<a>` elements.
+
 ## Gestures
 
 Touch taps, scrolling and flings work without any setup. For the rest, set `Gestures` on a box. It does not need `Hit`, and text under it stays selectable.

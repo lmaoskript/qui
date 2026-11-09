@@ -223,9 +223,14 @@ func (u *Ui) Text(value string, style ...TextStyle) {
 	if len(style) > 0 {
 		t = style[0]
 	}
+	u.text(value, nil, t)
+}
+
+func (u *Ui) text(value string, spans []Span, t TextStyle) (links []linkSpan) {
 	t = u.resolveText(t)
-	u.open(kindText, "")
+	id := u.open(kindText, "")
 	u.str(opText, value)
+	links = u.emitSpans(id, value, spans)
 	if t.Size != 0 {
 		u.f32Op(opFontSize, t.Size)
 	}
@@ -253,6 +258,7 @@ func (u *Ui) Text(value string, style ...TextStyle) {
 		u.f32Op(opTracking, t.Tracking)
 	}
 	u.u8(opEnd)
+	return links
 }
 
 func (u *Ui) Button(label string, style ...Style) Response {

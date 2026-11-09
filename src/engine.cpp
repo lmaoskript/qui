@@ -190,6 +190,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
   nodes.clear();
   lines.clear();
   uniforms.clear();
+  spans.clear();
   shaper.trim();
 
   Node root;
@@ -348,6 +349,20 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         node.shadow_y = in.read<float>();
         break;
       case OpTracking: node.tracking = in.read<float>(); break;
+      case OpSpan: {
+        SpanRef span;
+        span.start = in.read<uint32_t>();
+        span.end = in.read<uint32_t>();
+        span.flags = in.read<uint8_t>();
+        const uint32_t fg = in.read<uint32_t>(), bg = in.read<uint32_t>();
+        span.fg = fg ? resolve(fg) : 0;
+        span.bg = bg ? resolve(bg) : 0;
+        span.id = in.read<uint64_t>();
+        if (!node.span_count) node.span_first = static_cast<uint32_t>(spans.size());
+        ++node.span_count;
+        spans.push_back(span);
+        break;
+      }
       case OpImg: node.image = in.read<uint64_t>(); break;
       case OpFit: node.fit = in.read<uint8_t>(); break;
       case OpGestures: node.gestures = in.read<uint8_t>(); break;
@@ -377,14 +392,34 @@ void Engine::decode(const uint8_t *wire, size_t len) {
   if (!in.ok()) std::fprintf(stderr, "qui: truncated wire frame\n");
 }
 
-FontInstanceId Engine::font_for(const Node &node) {
+FontInstanceId Engine::font_for(const Node &node) { return font_for(node, node.weight != 0, node.mono); }
+
+const ShapedLine &Engine::shape_paragraph(const Node &node, std::string_view para, uint32_t para_byte) {
+  const float tracking = node.tracking * dpr;
+  if (!node.span_count) return shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, node.tracking == 0, tracking});
+  span_scratch.clear();
+  const auto para_end = para_byte + static_cast<uint32_t>(para.size());
+  for (uint32_t i = 0; i < node.span_count; ++i) {
+    const SpanRef &s = spans[node.span_first + i];
+    if (s.end <= para_byte || s.start >= para_end) continue;
+    TextStyleSpan t;
+    t.start_byte = std::max(s.start, para_byte) - para_byte;
+    t.end_byte = std::min(s.end, para_end) - para_byte;
+    t.font = font_for(node, node.weight != 0 || (s.flags & SpanBold), node.mono || (s.flags & SpanMono));
+    t.packed_rgba = s.fg;
+    t.ligatures_enabled = node.tracking == 0;
+    span_scratch.push_back(t);
+  }
+  return shaper.shape_line(para, span_scratch, {node.font, 0, node.tracking == 0, tracking});
+}
+
+FontInstanceId Engine::font_for(const Node &node, bool bold, bool mono) {
   const float size = (node.font_size > 0 ? node.font_size : kDefaultFontSize) * dpr;
   const int rounded = static_cast<int>(size + 0.5f);
-  const uint64_t key = (static_cast<uint64_t>(rounded) << 2) | (node.mono ? 2u : 0u) | (node.weight ? 1u : 0u);
+  const uint64_t key = (static_cast<uint64_t>(rounded) << 2) | (mono ? 2u : 0u) | (bold ? 1u : 0u);
   if (const auto it = font_cache_.find(key); it != font_cache_.end()) return it->second;
-  const SystemFont &face = node.mono ? (node.weight ? mono_bold_ : mono_regular_)
-                                     : (node.weight ? sans_bold_ : sans_regular_);
-  const FontInstanceId id = fonts.load_font_face(face.path, face.index, static_cast<float>(rounded), true, !node.mono, face.weight);
+  const SystemFont &face = mono ? (bold ? mono_bold_ : mono_regular_) : (bold ? sans_bold_ : sans_regular_);
+  const FontInstanceId id = fonts.load_font_face(face.path, face.index, static_cast<float>(rounded), true, !mono, face.weight);
   font_cache_[key] = id;
   return id;
 }
@@ -410,10 +445,12 @@ void Engine::intrinsic_width(Node &node) {
   } else if (is_text_leaf(node)) {
     node.font = font_for(node);
     std::string_view rest = node.text;
+    uint32_t para_byte = 0;
     for (;;) {
       const size_t nl = rest.find('\n');
       const std::string_view para = rest.substr(0, nl);
-      const ShapedLine &shaped = shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, node.tracking == 0, node.tracking * dpr});
+      const ShapedLine &shaped = shape_paragraph(node, para, para_byte);
+      para_byte += static_cast<uint32_t>(para.size()) + 1;
       content = std::max(content, shaped.total_advance / dpr);
       if (nl == std::string_view::npos) {
         if (rest.size() == node.text.size()) node.shaped = &shaped;
@@ -495,7 +532,7 @@ void Engine::wrap(Node &node, float inner_width) {
   for (;;) {
     const size_t nl = rest.find('\n');
     const std::string_view para = rest.substr(0, nl);
-    const ShapedLine &shaped = node.shaped ? *node.shaped : shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, node.tracking == 0, node.tracking * dpr});
+    const ShapedLine &shaped = node.shaped ? *node.shaped : shape_paragraph(node, para, para_byte);
     const auto count = static_cast<uint32_t>(shaped.glyphs.size());
     const uint32_t para_end = para_byte + static_cast<uint32_t>(para.size());
 
@@ -917,9 +954,11 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
     const float gy = std::round(y + (line_height - ink) / 2 + metrics->ascender - g.y_offset) - static_cast<float>(glyph->bitmap_top);
     const IRect bounds{static_cast<int>(gx), static_cast<int>(gy), static_cast<int>(glyph->bitmap_width), static_cast<int>(glyph->bitmap_height)};
     if (intersect(bounds, clip).empty()) return;
+    uint32_t glyph_rgba = rgba;
+    if (node.span_count && g.packed_rgba) glyph_rgba = __builtin_bswap32(faded(g.packed_rgba));
     Instance instance{gx, gy, static_cast<float>(glyph->bitmap_width), static_cast<float>(glyph->bitmap_height),
                       static_cast<float>(glyph->atlas_x), static_cast<float>(glyph->atlas_y), 0, 0,
-                      glyph->color_bitmap ? (0x00ffffffu | (std::min(alpha, 255u) << 24)) : rgba,
+                      glyph->color_bitmap ? (0x00ffffffu | (std::min(alpha, 255u) << 24)) : glyph_rgba,
                       glyph->color_bitmap ? InstColorGlyph : InstGlyph};
     if (gradient && !glyph->color_bitmap) {
       const float start = vertical ? gy : gx;
@@ -940,10 +979,59 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
     float end = x;
     const bool bidi = line.shaped->has_rtl;
     if (bidi) visual_offsets(line, visual_);
+    const bool decorated = node.span_count && !color_override;
+    const auto extent = [&](const SpanRef &span, float &lo, float &hi) {
+      lo = std::numeric_limits<float>::infinity();
+      hi = -lo;
+      for (uint32_t g = line.first; g < line.last; ++g) {
+        const ShapedGlyph &sg = line.shaped->glyphs[g];
+        const uint32_t byte = line.para_byte + sg.cluster_start_byte;
+        if (byte < span.start || byte >= span.end) continue;
+        const float at = x + (bidi ? visual_[g - line.first] : sg.x - origin);
+        lo = std::min(lo, at);
+        hi = std::max(hi, at + sg.x_advance);
+      }
+      return hi > lo;
+    };
+    if (decorated) {
+      for (uint32_t k = 0; k < node.span_count; ++k) {
+        const SpanRef &span = spans[node.span_first + k];
+        float lo, hi;
+        if (span.bg && extent(span, lo, hi)) add_rect(lo - 2 * dpr, y, hi - lo + 4 * dpr, line_height, faded(span.bg), 4 * dpr, 0, clip);
+      }
+    }
     for (uint32_t g = line.first; g < line.last; ++g) {
       const ShapedGlyph &shaped = line.shaped->glyphs[g];
       emit(shaped, x + (bidi ? visual_[g - line.first] : shaped.x - origin));
       end = x + shaped.x - origin + shaped.x_advance;
+    }
+    if (decorated) {
+      const float thickness = std::max(1.f, std::round(dpr));
+      for (uint32_t k = 0; k < node.span_count; ++k) {
+        const SpanRef &span = spans[node.span_first + k];
+        float lo, hi;
+        if (!(span.flags & (SpanUnderline | SpanStrike)) && !span.id) continue;
+        if (!extent(span, lo, hi)) continue;
+        const uint32_t line_color = span.fg ? faded(span.fg) : color;
+        if (span.flags & SpanUnderline) add_rect(lo, std::round(y + (line_height - ink) / 2 + metrics->ascender + dpr), hi - lo, thickness, line_color, 0, 0, clip);
+        if (span.flags & SpanStrike) add_rect(lo, std::round(y + line_height * 0.52f), hi - lo, thickness, line_color, 0, 0, clip);
+        if (span.id) {
+          HitEntry hit;
+          hit.id = span.id;
+          hit.x = lo / dpr;
+          hit.y = y / dpr;
+          hit.w = (hi - lo) / dpr;
+          hit.h = line_height / dpr;
+          hit.cx0 = static_cast<float>(clip.x) / dpr;
+          hit.cy0 = static_cast<float>(clip.y) / dpr;
+          hit.cx1 = static_cast<float>(clip.x + clip.w) / dpr;
+          hit.cy1 = static_cast<float>(clip.y + clip.h) / dpr;
+          hit.press = true;
+          hit.scroll_parent = scroll_parent_;
+          hit.parent = hit_parent_;
+          hits.push_back(hit);
+        }
+      }
     }
     if (line.ellipsis) {
       const ShapedLine &dots = shaper.shape_line_single("\xe2\x80\xa6", {}, {node.font, 0xffffffffu, true});

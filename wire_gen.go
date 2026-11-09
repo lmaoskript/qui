@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 7
+const wireVersion = 8
 
 const (
 	opEnd         = 0
@@ -52,6 +52,7 @@ const (
 	opImageData   = 46
 	opImg         = 47
 	opFit         = 48
+	opSpan        = 49
 )
 
 const (
@@ -101,6 +102,14 @@ const (
 	FitCover   ImageFit = 0
 	FitContain ImageFit = 1
 	FitStretch ImageFit = 2
+)
+
+const (
+	SpanBold      SpanFlags = 1
+	SpanMono      SpanFlags = 2
+	SpanItalic    SpanFlags = 4
+	SpanUnderline SpanFlags = 8
+	SpanStrike    SpanFlags = 16
 )
 
 const (

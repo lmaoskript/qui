@@ -170,7 +170,8 @@ function decode(bytes, length) {
       case Op.Hit: node.hit = r.u8(); break;
       case Op.Role: node.role = r.u8(); break;
       case Op.Label: node.label = r.str(); break;
-      case Op.Text: node.text = r.str(); break;
+      case Op.Text: { const n = r.u32(); node.textBuf = r.bytes; node.textAt = r.at; node.textLen = n; node.text = decoder.decode(r.bytes.subarray(r.at, r.at + n)); r.at += n; break; }
+      case Op.Span: { const span = { start: r.u32(), end: r.u32(), flags: r.u8(), fg: r.u32(), bg: r.u32() }; const lo = r.u32(), hi = r.u32(); span.lo = lo; span.hi = hi; span.key = (hi & 0x1fffff) * 4294967296 + lo; (node.spans ??= []).push(span); break; }
       case Op.FontSize: node.fontSize = r.f32(); break;
       case Op.Weight: node.weight = r.u8(); break;
       case Op.Mono: node.mono = true; break;
@@ -880,6 +881,44 @@ class Patcher {
     return entry;
   }
 
+  patchSpans(el, node) {
+    for (const child of [...el.children]) if (child.__key !== undefined) this.forget(child);
+    el.textContent = "";
+    const slice = (a, b) => decoder.decode(node.textBuf.subarray(node.textAt + a, node.textAt + b));
+    let at = 0;
+    const add = (text, span) => {
+      if (!text) return;
+      if (!span) {
+        el.appendChild(document.createTextNode(text));
+        return;
+      }
+      const child = document.createElement(span.key ? "a" : "span");
+      child.textContent = text;
+      let style = "";
+      if (span.flags & 1) style += "font-weight:700;";
+      if (span.flags & 2) style += "font-family:var(--qui-mono);";
+      if (span.flags & 4) style += "font-style:italic;";
+      const lines = [(span.flags & 8) && "underline", (span.flags & 16) && "line-through"].filter(Boolean);
+      if (lines.length) style += `text-decoration:${lines.join(" ")};`;
+      if (span.fg) style += `color:${color(span.fg)};`;
+      if (span.bg) style += `background:${color(span.bg)};border-radius:4px;padding:0 2px;`;
+      child.style.cssText = style;
+      if (span.key) {
+        child.__key = span.key;
+        child.setAttribute("data-qh", "");
+        child.style.cursor = "pointer";
+        this.entryFor({ key: span.key, lo: span.lo, hi: span.hi }, child);
+      }
+      el.appendChild(child);
+    };
+    for (const span of node.spans) {
+      add(slice(at, span.start), null);
+      add(slice(span.start, span.end), span);
+      at = span.end;
+    }
+    add(slice(at, node.textLen), null);
+  }
+
   patch(el, node, parent) {
     node.hDef = definiteHeight(node, parent);
     const signature = node.sig ^ (parent.dir * 2654435761) ^ (parent.kind === Kind.List ? 7 : 0) ^ (parent.hDef ? 11 : 0);
@@ -887,7 +926,8 @@ class Patcher {
       el.__sig = signature;
       el.style.cssText = css(node, parent);
       if (node.kind === Kind.Text || node.kind === Kind.Button) {
-        if (el.textContent !== node.text) el.textContent = node.text ?? "";
+        if (node.spans) this.patchSpans(el, node);
+        else if (el.textContent !== node.text) el.textContent = node.text ?? "";
       }
       if (node.label) el.setAttribute("aria-label", node.label);
       else el.removeAttribute("aria-label");

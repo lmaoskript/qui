@@ -90,6 +90,7 @@ var cppEnums = []struct{ group, typeName, base, prefix string }{
 	{"dir", "Dir", "uint8_t", "Dir"},
 	{"size", "SizeMode", "uint8_t", "Size"},
 	{"fit", "Fit", "uint8_t", "Fit"},
+	{"span", "SpanFlag", "uint8_t", "Span"},
 	{"flag", "Flag", "uint32_t", "Flag"},
 	{"token", "Token", "uint8_t", "Token"},
 }
@@ -163,6 +164,10 @@ func goSource(s spec) string {
 		fmt.Fprintf(&b, "\tFit%s ImageFit = %d\n", v.name, v.value)
 	}
 	b.WriteString(")\n\nconst (\n")
+	for _, v := range s.groups["span"] {
+		fmt.Fprintf(&b, "\tSpan%s SpanFlags = %d\n", v.name, v.value)
+	}
+	b.WriteString(")\n\nconst (\n")
 	for _, v := range s.groups["align"] {
 		fmt.Fprintf(&b, "\t%s Align = %d\n", v.name, v.value)
 	}
@@ -199,7 +204,7 @@ func js(s spec) string {
 	fmt.Fprintf(&b, "export const Version = %d;\n\n", s.version)
 	for _, e := range []struct{ group, name string }{
 		{"op", "Op"}, {"kind", "Kind"}, {"dir", "Dir"}, {"size", "Size"},
-		{"fit", "Fit"}, {"align", "Align"}, {"role", "Role"}, {"flag", "Flag"}, {"key", "Key"}, {"mod", "Mod"}, {"gesture", "Gesture"},
+		{"fit", "Fit"}, {"span", "Span"}, {"align", "Align"}, {"role", "Role"}, {"flag", "Flag"}, {"key", "Key"}, {"mod", "Mod"}, {"gesture", "Gesture"},
 	} {
 		fmt.Fprintf(&b, "export const %s = {", e.name)
 		for i, v := range s.groups[e.group] {

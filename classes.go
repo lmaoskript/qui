@@ -236,3 +236,74 @@ func (u *Ui) flushImages() {
 	u.buf = append(append(u.buf[:u.imageAt], u.pendingImgs...), tail...)
 	u.pendingImgs = u.pendingImgs[:0]
 }
+
+// SpanFlags style a Span. Combine SpanBold, SpanMono, SpanItalic, SpanUnderline
+// and SpanStrike.
+type SpanFlags uint8
+
+// Span styles the bytes Start to End of a Rich text. Fg and Bg of zero keep the
+// text color and paint no background. A non-empty Link makes the span
+// clickable: Rich reports it by name in Hovered, Clicked or RightClicked.
+// Spans must be sorted and must not overlap; text between them is plain.
+type Span struct {
+	Start, End int
+	Flags      SpanFlags
+	Fg, Bg     Color
+	Link       string
+}
+
+type linkSpan struct {
+	name string
+	id   uint64
+}
+
+// RichResult names the links under the pointer, from the previous frame.
+type RichResult struct {
+	Hovered, Clicked, RightClicked string
+}
+
+// Rich is Text with styled spans: bold, monospace, colors, backgrounds,
+// underline, strike-through and clickable links, wrapped together as one
+// paragraph. Offsets are UTF-8 byte offsets into value.
+func (u *Ui) Rich(value string, spans []Span, style ...TextStyle) RichResult {
+	var t TextStyle
+	if len(style) > 0 {
+		t = style[0]
+	}
+	var out RichResult
+	for _, link := range u.text(value, spans, t) {
+		r := u.lookup(link.id)
+		if r.Hovered {
+			out.Hovered = link.name
+		}
+		if r.Clicked {
+			out.Clicked = link.name
+		}
+		if r.RightClicked {
+			out.RightClicked = link.name
+		}
+	}
+	return out
+}
+
+func (u *Ui) emitSpans(node uint64, value string, spans []Span) []linkSpan {
+	var links []linkSpan
+	for _, s := range spans {
+		if s.Start < 0 || s.End > len(value) || s.End <= s.Start {
+			continue
+		}
+		var id uint64
+		if s.Link != "" {
+			id = mixString(node, "link:"+s.Link)
+			links = append(links, linkSpan{s.Link, id})
+		}
+		u.u8(opSpan)
+		u.u32(uint32(s.Start))
+		u.u32(uint32(s.End))
+		u.u8(uint8(s.Flags))
+		u.u32(uint32(s.Fg))
+		u.u32(uint32(s.Bg))
+		u.u64(id)
+	}
+	return links
+}

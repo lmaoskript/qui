@@ -68,6 +68,7 @@ struct Node {
   uint32_t uniform_first = 0, uniform_count = 0;
   uint64_t image = 0;
   uint8_t fit = 0;
+  uint32_t span_first = 0, span_count = 0;
 
   float iw = 0, ih = 0, x = 0, y = 0, w = 0, h = 0;
   uint32_t line_first = 0, line_count = 0;
@@ -269,6 +270,14 @@ class Engine {
   TextShaper shaper{fonts};
   FrameData frame, previous;
   uint8_t theme = 0;
+  struct SpanRef {
+    uint32_t start = 0, end = 0;
+    uint8_t flags = 0;
+    uint32_t fg = 0, bg = 0;
+    uint64_t id = 0;
+  };
+  std::vector<SpanRef> spans;
+  std::vector<TextStyleSpan> span_scratch;
   struct ImageSource {
     uint32_t w = 0, h = 0;
     std::vector<uint8_t> rgba;
@@ -300,6 +309,8 @@ class Engine {
   RoundClip round_clip_;
 
   FontInstanceId font_for(const Node &node);
+  FontInstanceId font_for(const Node &node, bool bold, bool mono);
+  const ShapedLine &shape_paragraph(const Node &node, std::string_view para, uint32_t para_byte);
   uint32_t resolve(uint32_t color) const;
   void intrinsic_width(Node &node);
   void distribute_width(Node &node);

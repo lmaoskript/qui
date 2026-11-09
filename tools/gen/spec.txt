@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 7
+version 8
 
 kind Box 0
 kind Text 1
@@ -23,6 +23,12 @@ size Pct 3
 fit Cover 0
 fit Contain 1
 fit Stretch 2
+
+span Bold 1
+span Mono 2
+span Italic 4
+span Underline 8
+span Strike 16
 
 align Start 0
 align Center 1
@@ -87,6 +93,7 @@ op Palette 45
 op ImageData 46
 op Img 47
 op Fit 48
+op Span 49
 
 gesture PanX 1
 gesture PanY 2
