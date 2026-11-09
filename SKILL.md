@@ -78,6 +78,7 @@ A strict flexbox subset that maps directly to CSS.
 - Padding: Go `All(n)`, `XY(x, y)`, `Edges{Top, Right, Bottom, Left}`; C++ `16`, `{v, h}`, `{t, r, b, l}`.
 - `Align` is the cross axis (`Start Center End Stretch`), `Justify` the main axis (`Start Center End Between`).
 - Long text inside a `Row` needs `W: Fill()` to wrap instead of overflow.
+- `Wrap: true` on a `Row` flows children onto new lines (tags, chips, reactions); `Gap` spaces both ways and `Justify`/`Align` apply per line.
 - Button labels are centered. `Justify: Between` left-aligns one, `Justify: End` right-aligns it.
 - `Scroll: true` scrolls vertically and needs a bounded height. Use `List` for long content.
 - `Z` sets paint and hit order among siblings. Use it to raise overlapping panels: unlike reordering children, it keeps their scroll position and focus on the web. Give overlapping panels `Hit: true` so the pointer and wheel stop at them.
@@ -86,7 +87,7 @@ A strict flexbox subset that maps directly to CSS.
 - `Select: true` lets the mouse select the text inside, even under `Hit` boxes: drag, double-click a word, triple-click a text, Ctrl+C copies. `ui.SelectedText()` (C++ `selected_text()`) returns it for a Copy menu item.
 - `ScrollTo: &offset` sets a `Scroll` box's offset for that frame. Animate it yourself for smooth anchors, and stop sending it when done so the user can scroll. A zero-height `Hit` box inside the scroller reports its viewport-relative `Y` even offscreen, which gives you scroll position, reveal-on-scroll and scroll-spy. Web scrolling does not wake the loop, so run a ticker calling `ui.Wake()` for those.
 
-`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Gestures Role Label Key Class Select` (C++ `select` comes last)
+`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Gestures Role Label Key Class Select Wrap` (C++ `select`, `wrap` come last)
 
 `TextStyle` fields, in order: `Size Bold Mono Ellipsis Color W Align Role Gradient Tracking Class`. Presets: `Body H1 H2 Small Code`.
 

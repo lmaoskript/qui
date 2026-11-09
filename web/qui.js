@@ -173,6 +173,7 @@ function decode(bytes, length) {
       case Op.Opacity: node.opacity = r.f32(); break;
       case Op.Clip: node.clip = true; break;
       case Op.Select: node.select = true; break;
+      case Op.Wrap: node.wrap = true; break;
       case Op.Scroll: node.scroll = true; break;
       case Op.Hit: node.hit = r.u8(); break;
       case Op.Role: node.role = r.u8(); break;
@@ -302,6 +303,7 @@ function css(node, parent) {
     if (node.dir === Dir.Stack) s += "display:grid;";
     else s += `display:flex;flex-direction:${node.dir === Dir.Row ? "row" : "column"};`;
     if (node.gap) s += `gap:${node.gap}px;`;
+    if (node.wrap && node.dir === Dir.Row) s += "flex-wrap:wrap;align-content:flex-start;";
     if (node.dir !== Dir.Stack) {
       s += `align-items:${flexAlign[node.align ?? 0]};justify-content:${flexAlign[node.justify ?? 0]};`;
     }

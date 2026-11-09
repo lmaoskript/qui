@@ -70,6 +70,7 @@ struct Style {
   uint8_t role = 0;
   std::string_view label{}, key{};
   bool select = false;
+  bool wrap = false;
 };
 
 struct TextStyle {
@@ -787,6 +788,7 @@ class Ui {
     s.scroll |= b.scroll;
     s.hit |= b.hit;
     s.select |= b.select;
+    s.wrap |= b.wrap;
     if (!s.gestures) s.gestures = b.gestures;
     if (!s.role) s.role = b.role;
     if (s.label.empty()) s.label = b.label;
@@ -839,6 +841,7 @@ class Ui {
     if (s.scroll_to) f32_op(wire::OpScrollTo, *s.scroll_to);
     if (s.hit) u8_op(wire::OpHit, 1);
     if (s.select) u8(wire::OpSelect);
+    if (s.wrap) u8(wire::OpWrap);
     if (s.gestures) u8_op(wire::OpGestures, s.gestures);
     if (s.role) u8_op(wire::OpRole, s.role);
     if (!s.label.empty()) str(wire::OpLabel, s.label);

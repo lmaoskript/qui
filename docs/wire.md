@@ -40,7 +40,7 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `ScrollTo` | `f32`, sets the scroll offset of a `Scroll` box this frame |
 | `Bg`, `Fg` | `color:u32` |
 | `Border` | `color:u32 width:f32` |
-| `Clip`, `Scroll`, `Mono`, `Ellipsis`, `Password`, `PassthroughNav`, `Select` | none |
+| `Clip`, `Scroll`, `Mono`, `Ellipsis`, `Password`, `PassthroughNav`, `Select`, `Wrap` | none |
 | `Label`, `Text`, `Src`, `Placeholder` | `str` |
 | `Virtual` | `count:u32 estimate:f32 bottom:u8` |
 | `Item` | `index:u32` |

@@ -70,6 +70,7 @@ struct Node {
   uint8_t multiline = 0, focus_mode = 0, gestures = 0;
   bool mono = false, clip = false, scroll = false, ellipsis = false, has_pos = false, bottom = false;
   bool password = false, passthrough_nav = false, placeholder_shown = false, has_gradient = false, has_scroll_to = false;
+  bool wrap = false;
   float w_val = 0, h_val = 0, min_w = 0, max_w = 0, min_h = 0, max_h = 0;
   float pad[4] = {};
   float gap = 0, pos_x = 0, pos_y = 0;
@@ -363,6 +364,8 @@ class Engine {
   void place_children(Node &node);
   void place_list(Node &node);
   void wrap(Node &node, float inner_width);
+  float flow_lines(Node &node, bool place);
+  std::vector<Node *> flow_line_;
   void sync_input(Node &node, int index);
   void apply_input_view(Node &node, const InputState &state);
   float input_text_top(const Node &node, const InputState &state) const;

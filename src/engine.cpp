@@ -324,6 +324,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpOpacity: node.opacity = in.read<float>(); break;
       case OpClip: node.clip = true; break;
       case OpSelect: node.select_root = stack.back(); break;
+      case OpWrap: node.wrap = true; break;
       case OpScroll: node.scroll = node.clip = true; break;
       case OpHit: node.hit = in.read<uint8_t>(); break;
       case OpRole: node.role = in.read<uint8_t>(); break;
@@ -498,7 +499,7 @@ void Engine::distribute_width(Node &node) {
     c.w = c.w_mode == SizePx ? c.w_val : c.w_mode == SizePct ? inner * c.w_val / 100 : c.w_mode == SizeFill ? inner : c.iw;
     c.w = clamp_size(c.w, c.min_w, c.max_w);
   });
-  if (node.dir != DirRow) {
+  if (node.dir != DirRow || node.wrap) {
     each_child(nodes, node, [&](Node &c) {
       if (!in_flow(c)) return;
       float w = c.iw;
@@ -506,7 +507,7 @@ void Engine::distribute_width(Node &node) {
         case SizePx: w = c.w_val; break;
         case SizePct: w = inner * c.w_val / 100; break;
         case SizeFill: w = inner; break;
-        default: w = node.align == Stretch ? inner : std::min(c.iw, inner); break;
+        default: w = node.align == Stretch && !node.wrap ? inner : std::min(c.iw, inner); break;
       }
       c.w = clamp_size(w, c.min_w, c.max_w);
     });
@@ -611,6 +612,8 @@ void Engine::intrinsic_height(Node &node) {
     wrap(node, std::max(0.f, node.w - node.pad[1] - node.pad[3]));
     const float size = node.font_size > 0 ? node.font_size : kDefaultFontSize;
     content = line_height_for(size) * static_cast<float>(node.line_count);
+  } else if (node.wrap && node.dir == DirRow) {
+    content = flow_lines(node, false);
   } else {
     int flow = 0;
     each_child(nodes, node, [&](const Node &c) {
@@ -670,6 +673,42 @@ void Engine::distribute_height(Node &node) {
     else if (in_flow(c) && c.h_mode == SizeFill)
       c.h = c.ih;
   });
+}
+
+float Engine::flow_lines(Node &node, bool place) {
+  const float inner = std::max(0.f, node.w - node.pad[1] - node.pad[3]);
+  const float left = node.x + node.pad[3], top = node.y + node.pad[0];
+  float y = 0, line_w = 0, line_h = 0;
+  bool first = true;
+  flow_line_.clear();
+  const auto finish = [&] {
+    if (flow_line_.empty()) return;
+    if (!first) y += node.gap;
+    first = false;
+    if (place) {
+      const float free_space = inner - line_w;
+      float x = node.justify == Center ? free_space / 2 : node.justify == End ? free_space : 0, gap = node.gap;
+      if (node.justify == Between && flow_line_.size() > 1 && free_space > 0) gap += free_space / static_cast<float>(flow_line_.size() - 1);
+      for (Node *c : flow_line_) {
+        const float offset = node.align == Center ? (line_h - c->h) / 2 : node.align == End ? line_h - c->h : 0;
+        c->x = left + x;
+        c->y = top + y + offset;
+        x += c->w + gap;
+      }
+    }
+    y += line_h;
+    flow_line_.clear();
+    line_w = line_h = 0;
+  };
+  each_child(nodes, node, [&](Node &c) {
+    if (!in_flow(c)) return;
+    if (!flow_line_.empty() && line_w + node.gap + c.w > inner + 0.5f) finish();
+    line_w += (flow_line_.empty() ? 0 : node.gap) + c.w;
+    line_h = std::max(line_h, place ? c.h : c.ih);
+    flow_line_.push_back(&c);
+  });
+  finish();
+  return y;
 }
 
 void Engine::place_list(Node &node) {
@@ -836,6 +875,11 @@ void Engine::place_children(Node &node) {
       c.x = left + (node.align == Center ? free_x / 2 : node.align == End ? free_x : 0);
       c.y = top - scroll + (node.justify == Center ? free_y / 2 : node.justify == End ? free_y : 0);
     });
+    return;
+  }
+
+  if (node.wrap && node.dir == DirRow) {
+    flow_lines(node, true);
     return;
   }
 
