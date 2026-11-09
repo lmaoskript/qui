@@ -4,7 +4,10 @@ package qui
 // root container (a Stack or any container the size of the window), after the
 // content they cover, so they paint and hit-test on top.
 
-const overlayZ = 1 << 20
+const (
+	overlayZ    = 1 << 20
+	modalMargin = 16
+)
 
 // Modal shows body in a centered panel over a dimming scrim. It returns true
 // when the user clicked the scrim or pressed Escape, which is the cue to close
@@ -19,6 +22,12 @@ func (u *Ui) Modal(key string, panel Style, body func()) bool {
 		panel.Hit = true
 		if panel.Key == "" {
 			panel.Key = key + "/panel"
+		}
+		if w := u.Width() - 2*modalMargin; w > 0 && (panel.MaxW == 0 || panel.MaxW > w) {
+			panel.MaxW = w
+		}
+		if h := u.Height() - 2*modalMargin; h > 0 && (panel.MaxH == 0 || panel.MaxH > h) {
+			panel.MaxH = h
 		}
 		u.Column(panel, body)
 	})

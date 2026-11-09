@@ -86,6 +86,7 @@ struct TextStyle {
 };
 
 inline constexpr int32_t kOverlayZ = 1 << 20;
+inline constexpr float kModalMargin = 16;
 
 inline constexpr TextStyle Body{};
 inline constexpr TextStyle H1{.size = 24, .bold = true, .color = Strong, .role = RoleHeading};
@@ -381,6 +382,8 @@ class Ui {
       if (scrim.clicked) dismissed = true;
       panel.hit = true;
       if (panel.key.empty()) panel.key = panel_key;
+      if (const float w = width() - 2 * kModalMargin; w > 0 && (!panel.max_w || panel.max_w > w)) panel.max_w = w;
+      if (const float h = height() - 2 * kModalMargin; h > 0 && (!panel.max_h || panel.max_h > h)) panel.max_h = h;
       column(panel, body);
     });
     return dismissed || key_pressed(KeyEscape);
