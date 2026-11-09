@@ -190,6 +190,7 @@ function decode(bytes, length) {
       case Op.Placeholder: node.placeholder = r.str(); break;
       case Op.Multiline: node.multiline = r.u8(); break;
       case Op.Password: node.password = true; break;
+      case Op.PassthroughNav: node.passthroughNav = true; break;
       case Op.Focus: node.focus = r.u8(); break;
       case Op.Z: node.z = r.u32() | 0; break;
       case Op.Gradient: node.gradient = { from: r.u32(), to: r.u32(), angle: r.f32() }; break;
@@ -727,7 +728,7 @@ class Patcher {
     window.addEventListener("keydown", (e) => {
       if (e.isComposing || e.keyCode === 229) return;
       const code = keyCode(e);
-      if (code === undefined || code === Key.Tab) return;
+      if (code === undefined || (code === Key.Tab && !e.target.__navPass)) return;
       const chord = [e.ctrlKey && "ctrl", e.shiftKey && "shift", e.altKey && "alt", e.metaKey && "meta", e.key.toLowerCase()].filter(Boolean).join("+");
       if (this.preventKeys.has(chord)) e.preventDefault();
       const mods = (e.shiftKey ? Mod.Shift : 0) | (e.ctrlKey ? Mod.Ctrl : 0) | (e.altKey ? Mod.Alt : 0) | (e.metaKey ? Mod.Meta : 0);
@@ -744,6 +745,10 @@ class Patcher {
 
   fieldKey(field, event, code, mods, shot) {
     const shift = (mods & Mod.Shift) !== 0, ctrl = (mods & Mod.Ctrl) !== 0;
+    if (field.__navPass && (code === Key.Tab || code === Key.Up || code === Key.Down)) {
+      event.preventDefault();
+      return false;
+    }
     if (code === Key.Escape || (mods & (Mod.Alt | Mod.Meta))) return false;
     if (code === Key.Enter) {
       const submit = !field.__multi || (field.__multi === 2 ? !shift : ctrl);
@@ -997,6 +1002,7 @@ class Patcher {
 
   patchField(el, node) {
     el.__multi = node.multiline ?? 0;
+    el.__navPass = !!node.passthroughNav;
     el.__fixedHeight = (node.hMode ?? Size.Fit) !== Size.Fit;
     el.placeholder = node.placeholder ?? "";
     if (!node.multiline) el.type = node.password ? "password" : "text";

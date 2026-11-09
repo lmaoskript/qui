@@ -156,7 +156,7 @@ struct InputOptions {
   Style style{};
   std::string_view placeholder{};
   float size = 0;
-  bool mono = false, multiline = false, enter_submits = false, password = false, autofocus = false, focus = false;
+  bool mono = false, multiline = false, enter_submits = false, password = false, autofocus = false, focus = false, passthrough_nav = false;
 };
 
 enum class Side : uint8_t { Left, Right, Top, Bottom };
@@ -474,6 +474,7 @@ class Ui {
     if (options.mono) u8(wire::OpMono);
     if (options.multiline) u8_op(wire::OpMultiline, options.enter_submits ? 2 : 1);
     if (options.password) u8(wire::OpPassword);
+    if (options.passthrough_nav) u8(wire::OpPassthroughNav);
     if (options.focus) u8_op(wire::OpFocus, 2);
     else if (options.autofocus) u8_op(wire::OpFocus, 1);
     u8(wire::OpEnd);

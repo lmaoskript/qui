@@ -569,7 +569,7 @@ struct qui_app {
         return true;
       case KeyUp:
       case KeyDown:
-        if (!state.multiline || text.empty()) return false;
+        if (state.passthrough_nav || !state.multiline || text.empty()) return false;
         move_caret(state, engine.input_vertical(state, key == KeyUp ? -1 : 1), shift);
         return true;
       case KeyHome:
@@ -640,7 +640,13 @@ struct qui_app {
   void on_key(uint32_t key, uint32_t mods) {
     if (!key) return;
     if (key == KeyTab && !(mods & (ModCtrl | ModAlt | ModMeta))) {
-      focus_step(mods & ModShift);
+      if (InputState *state = focused_input(); !state || !state->passthrough_nav) {
+        focus_step(mods & ModShift);
+        return;
+      }
+      keys.push_back(key);
+      keys.push_back(mods);
+      dirty = true;
       return;
     }
     if (InputState *state = focused_input()) {

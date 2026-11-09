@@ -51,7 +51,7 @@ struct Node {
   uint8_t w_mode = 0, h_mode = 0;
   uint8_t multiline = 0, focus_mode = 0, gestures = 0;
   bool mono = false, clip = false, scroll = false, ellipsis = false, has_pos = false, bottom = false;
-  bool password = false, placeholder_shown = false, has_gradient = false, has_scroll_to = false;
+  bool password = false, passthrough_nav = false, placeholder_shown = false, has_gradient = false, has_scroll_to = false;
   float w_val = 0, h_val = 0, min_w = 0, max_w = 0, min_h = 0, max_h = 0;
   float pad[4] = {};
   float gap = 0, pos_x = 0, pos_y = 0;
@@ -213,7 +213,7 @@ struct InputState {
   std::string text, seen, display, preedit, placeholder;
   size_t caret = 0, anchor = 0, preedit_cursor = 0, last_end = 0;
   float scroll_x = 0, scroll_y = 0, scroll_limit_y = 0, goal_x = -1;
-  bool changed = false, submitted = false, multiline = false, submit_on_enter = false, password = false, reveal = true;
+  bool changed = false, submitted = false, multiline = false, submit_on_enter = false, password = false, reveal = true, passthrough_nav = false;
   EditKind last_edit = EditKind::None;
   std::vector<Snapshot> undo, redo;
 

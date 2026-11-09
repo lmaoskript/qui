@@ -321,6 +321,7 @@ void Engine::sync_input(Node &node, int index) {
   state.multiline = node.multiline != 0;
   state.submit_on_enter = node.multiline == 2;
   state.password = node.password;
+  state.passthrough_nav = node.passthrough_nav;
   if (state.placeholder != node.placeholder) state.placeholder = node.placeholder;
   if (fresh || node.text != state.seen) state.assign(node.text);
   if (node.focus_mode == 2 || (fresh && node.focus_mode == 1)) focus_request = node.id;

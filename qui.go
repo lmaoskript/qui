@@ -145,6 +145,8 @@ type InputOptions struct {
 	Placeholder                                               string
 	Size                                                      float32
 	Mono, Multiline, EnterSubmits, Password, Autofocus, Focus bool
+	// PassthroughNav hands Up, Down and Tab to the app instead of the field.
+	PassthroughNav bool
 }
 
 type scope struct {
@@ -366,6 +368,9 @@ func (u *Ui) Input(key string, value *string, options ...InputOptions) Response 
 	}
 	if o.Password {
 		u.u8(opPassword)
+	}
+	if o.PassthroughNav {
+		u.u8(opPassthroughNav)
 	}
 	if o.Focus {
 		u.u8Op(opFocus, 2)
