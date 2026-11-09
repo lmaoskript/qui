@@ -10,28 +10,52 @@ namespace qui {
 
 namespace {
 
-inline uint32_t blend_channel(uint32_t src, uint32_t dst, uint32_t inverse_alpha) {
-  const uint32_t value = dst * inverse_alpha + 128;
-  return src + ((value + (value >> 8)) >> 8);
-}
-
-inline uint32_t over(uint32_t src, uint32_t dst) {
-  const uint32_t inverse = 255 - (src >> 24);
-  const uint32_t r = blend_channel(src & 0xff, dst & 0xff, inverse);
-  const uint32_t g = blend_channel((src >> 8) & 0xff, (dst >> 8) & 0xff, inverse);
-  const uint32_t b = blend_channel((src >> 16) & 0xff, (dst >> 16) & 0xff, inverse);
-  const uint32_t a = blend_channel(src >> 24, dst >> 24, inverse);
-  return r | (g << 8) | (b << 16) | (a << 24);
-}
-
 inline uint32_t mul(uint32_t channel, uint32_t coverage) {
   const uint32_t value = channel * coverage + 128;
   return (value + (value >> 8)) >> 8;
 }
 
+// The four channels of a pixel sit in 16-bit lanes of one 64-bit word, so a
+// single multiply scales all of them with the same rounding as mul().
+constexpr uint64_t kLanes = 0x00ff00ff00ff00ffull;
+
+inline uint64_t spread(uint32_t pixel) { return (pixel | (static_cast<uint64_t>(pixel) << 24)) & kLanes; }
+
+inline uint32_t pack(uint64_t lanes) { return static_cast<uint32_t>(lanes | (lanes >> 24)); }
+
+inline uint64_t mul_lanes(uint64_t lanes, uint32_t factor) {
+  const uint64_t value = lanes * factor + 0x0080008000800080ull;
+  return ((value + ((value >> 8) & kLanes)) >> 8) & kLanes;
+}
+
+inline uint32_t over(uint32_t src, uint32_t dst) { return src + pack(mul_lanes(spread(dst), 255 - (src >> 24))); }
+
 inline uint32_t premultiply(uint32_t rgba, uint32_t coverage) {
   const uint32_t a = mul(rgba >> 24, coverage);
-  return mul(rgba & 0xff, a) | (mul((rgba >> 8) & 0xff, a) << 8) | (mul((rgba >> 16) & 0xff, a) << 16) | (a << 24);
+  return pack(mul_lanes(spread(rgba & 0x00ffffffu), a)) | (a << 24);
+}
+
+typedef uint32_t Quad __attribute__((vector_size(16)));
+
+inline void blend_span(uint32_t *dst, int count, uint32_t src) {
+  if ((src >> 24) == 255) {
+    std::fill_n(dst, count, src);
+    return;
+  }
+  const uint32_t inverse = 255 - (src >> 24);
+  int i = 0;
+  // Four pixels at a time, with the same rounding as over().
+  for (; i + 4 <= count; i += 4) {
+    Quad d;
+    std::memcpy(&d, dst + i, sizeof(d));
+    Quad rb = (d & 0x00ff00ffu) * inverse + 0x00800080u;
+    Quad ga = ((d >> 8) & 0x00ff00ffu) * inverse + 0x00800080u;
+    rb = ((rb + ((rb >> 8) & 0x00ff00ffu)) >> 8) & 0x00ff00ffu;
+    ga = (ga + ((ga >> 8) & 0x00ff00ffu)) & 0xff00ff00u;
+    d = src + (rb | ga);
+    std::memcpy(dst + i, &d, sizeof(d));
+  }
+  for (; i < count; ++i) dst[i] = over(src, dst[i]);
 }
 
 inline float smooth_coverage(float dist) {
@@ -164,14 +188,7 @@ class Cpu final : public CpuBackend {
     const IRect r = intersect({static_cast<int>(inst.x), static_cast<int>(inst.y), static_cast<int>(inst.w), static_cast<int>(inst.h)}, clip);
     if (r.empty()) return;
     const uint32_t src = premultiply(inst.rgba, 255);
-    if ((src >> 24) == 255) {
-      for (int y = r.y; y < r.y + r.h; ++y) std::fill_n(pixels_.data() + static_cast<size_t>(y) * width_ + r.x, r.w, src);
-      return;
-    }
-    for (int y = r.y; y < r.y + r.h; ++y) {
-      uint32_t *row = pixels_.data() + static_cast<size_t>(y) * width_ + r.x;
-      for (int x = 0; x < r.w; ++x) row[x] = over(src, row[x]);
-    }
+    for (int y = r.y; y < r.y + r.h; ++y) blend_span(pixels_.data() + static_cast<size_t>(y) * width_ + r.x, r.w, src);
   }
 
   void gradient(const Instance &inst, IRect clip) {
@@ -204,10 +221,20 @@ class Cpu final : public CpuBackend {
     const float blur = inst.v0, offset = inst.v1;
     const float half_w = inst.w / 2 - blur, half_h = inst.h / 2 - blur;
     const float radius = std::min({inst.u0, half_w, half_h});
+    // Pixels well inside the box are hidden by it, so each row skips them.
+    const float margin = std::max(radius, 1.f) + 1;
+    const int skip_from = x0 + static_cast<int>(std::ceil(blur + margin));
+    const int skip_to = x0 + static_cast<int>(std::floor(blur + half_w * 2 - margin));
     for (int y = r.y; y < r.y + r.h; ++y) {
       uint32_t *row = pixels_.data() + static_cast<size_t>(y) * width_;
       const float py = static_cast<float>(y - y0) + 0.5f;
+      const float box_y = py - blur + offset;
+      const bool skips = skip_to > skip_from && box_y >= margin && box_y <= half_h * 2 - margin;
       for (int x = r.x; x < r.x + r.w; ++x) {
+        if (skips && x >= skip_from && x < skip_to) {
+          x = skip_to - 1;
+          continue;
+        }
         const float px = static_cast<float>(x - x0) + 0.5f;
         const float inside = rounded_distance(px - blur, py - blur + offset, half_w, half_h, radius);
         if (inside < -0.5f) continue;
@@ -238,30 +265,34 @@ class Cpu final : public CpuBackend {
       return static_cast<uint32_t>(cover * 255 + 0.5f);
     };
 
+    // Past the corners coverage only varies along one axis: the middle of an
+    // edge row shares one value, and so does each side column of the rows
+    // between them.
+    const bool split = w > inset * 2;
+    const int left = split ? inset : w, right = split ? w - inset : w;
+    const int from = r.x - x0, to = r.x + r.w - x0;
+    if (h > inset * 2) {
+      columns_.resize(static_cast<size_t>(left + w - right));
+      for (int px = 0; px < left; ++px) columns_[static_cast<size_t>(px)] = static_cast<uint8_t>(shade(px, inset));
+      for (int px = right; px < w; ++px) columns_[static_cast<size_t>(left + px - right)] = static_cast<uint8_t>(shade(px, inset));
+    }
+
     for (int y = r.y; y < r.y + r.h; ++y) {
       const int py = y - y0;
       const bool edge_row = py < inset || py >= h - inset;
       uint32_t *row = pixels_.data() + static_cast<size_t>(y) * width_;
-      for (int x = r.x; x < r.x + r.w; ++x) {
-        const int px = x - x0;
-        if (!edge_row && px >= inset && px < w - inset) {
-          if (stroke > 0) {
-            x = std::min(r.x + r.w, x0 + w - inset) - 1;
-            continue;
-          }
-          const int stop = std::min(r.x + r.w, x0 + w - inset);
-          if ((solid_src >> 24) == 255) {
-            std::fill(row + x, row + stop, solid_src);
-          } else {
-            for (int fill = x; fill < stop; ++fill) row[fill] = over(solid_src, row[fill]);
-          }
-          x = stop - 1;
-          continue;
+      const auto sides = [&](int begin, int end, int first) {
+        for (int px = std::max(begin, from); px < std::min(end, to); ++px) {
+          const uint32_t cover = edge_row ? shade(px, py) : columns_[static_cast<size_t>(first + px - begin)];
+          if (cover) row[x0 + px] = over(cover == 255 ? solid_src : premultiply(inst.rgba, cover), row[x0 + px]);
         }
-        const uint32_t cover = shade(px, py);
-        if (cover == 0) continue;
-        row[x] = over(premultiply(inst.rgba, cover), row[x]);
-      }
+      };
+      sides(0, left, 0);
+      sides(right, w, left);
+      const int begin = std::max(left, from), end = std::min(right, to);
+      if (begin >= end) continue;
+      const uint32_t cover = edge_row ? shade(left, py) : stroke > 0 ? 0u : 255u;
+      if (cover) blend_span(row + x0 + begin, end - begin, cover == 255 ? solid_src : premultiply(inst.rgba, cover));
     }
   }
 
@@ -277,6 +308,7 @@ class Cpu final : public CpuBackend {
     const uint32_t tint_alpha = inst.rgba >> 24;
     const bool horizontal = (inst.flags & InstGradient) != 0, vertical = (inst.flags & InstGradientV) != 0;
     const Premul from = unpack(inst.rgba), to = horizontal || vertical ? unpack_end(inst) : from;
+    const uint32_t solid_src = premultiply(inst.rgba, 255);
 
     for (int y = r.y; y < r.y + r.h; ++y) {
       const uint8_t *src = page.pixels.data() + (static_cast<size_t>(ay + y - y0) * page.width + static_cast<size_t>(ax + r.x - x0)) * 4;
@@ -291,7 +323,7 @@ class Cpu final : public CpuBackend {
           const float t = vertical ? (static_cast<float>(y - y0) + 0.5f) / inst.h : (static_cast<float>(r.x + x - x0) + 0.5f) / inst.w;
           pixel = mixed_pixel(from, to, t, static_cast<float>(texel_alpha) / 255);
         } else {
-          pixel = premultiply(inst.rgba, texel_alpha);
+          pixel = texel_alpha == 255 ? solid_src : premultiply(inst.rgba, texel_alpha);
         }
         dst[x] = over(pixel, dst[x]);
       }
@@ -300,6 +332,7 @@ class Cpu final : public CpuBackend {
 
   int width_ = 0, height_ = 0;
   std::vector<uint32_t> pixels_, saved_;
+  std::vector<uint8_t> columns_;
   std::vector<Page> pages_;
 };
 
