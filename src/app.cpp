@@ -354,7 +354,13 @@ struct qui_app {
     std::string steps = env("QUI_DRIVE");
     for (size_t at = 0; at < steps.size();) {
       const size_t end = std::min(steps.find(';', at), steps.size());
-      if (end > at) drive.push_back(steps.substr(at, end - at));
+      if (end > at) {
+        std::string step = steps.substr(at, end - at);
+        if (int frames_to_wait = 0; std::sscanf(step.c_str(), "wait:%d", &frames_to_wait) == 1)
+          drive.insert(drive.end(), static_cast<size_t>(std::max(1, (frames_to_wait + 1) / 2)), "wait");
+        else
+          drive.push_back(std::move(step));
+      }
       at = end + 1;
     }
 
@@ -1130,6 +1136,7 @@ struct qui_app {
   void drive_step() {
     if (drive_at >= drive.size() || frames < 2 || frames % 2 != 0) return;
     const std::string &step = drive[drive_at++];
+    if (step == "wait") return;
     float x = 0, y = 0, amount = 0, x2 = 0, y2 = 0;
     if (step.rfind("type:", 0) == 0) {
       SDL_Event e{};
