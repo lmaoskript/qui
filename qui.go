@@ -153,6 +153,10 @@ type Ui struct {
 	theme   Theme
 	palette []paletteEntry
 
+	imageAt     int
+	pendingImgs []byte
+	sentImages  map[uint64]struct{}
+
 	styleClasses map[string]Style
 	textClasses  map[string]TextStyle
 	started      bool
@@ -169,6 +173,7 @@ func newUi() *Ui {
 func (u *Ui) Frame() bool {
 	if u.started {
 		u.stats.Nodes, u.stats.WireBytes = u.nodes, len(u.buf)
+		u.flushImages()
 		u.submit()
 	}
 	res := u.wait()
@@ -184,6 +189,7 @@ func (u *Ui) Frame() bool {
 	u.u8(wireVersion)
 	u.u8(uint8(u.theme))
 	u.emitPalette()
+	u.imageAt = len(u.buf)
 	return true
 }
 

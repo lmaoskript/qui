@@ -212,6 +212,20 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       palette_set.reset();
       continue;
     }
+    if (op == OpImageData) {
+      const uint64_t key = in.read<uint64_t>();
+      const uint16_t w = in.read<uint16_t>(), h = in.read<uint16_t>();
+      const size_t bytes = static_cast<size_t>(w) * h * 4;
+      const std::string_view data = in.bytes(bytes);
+      if (in.ok() && data.size() == bytes) {
+        ImageSource &source = images[key];
+        source.w = w;
+        source.h = h;
+        source.rgba.assign(data.begin(), data.end());
+        std::erase_if(image_regions, [&](const auto &kv) { return kv.second.source == key; });
+      }
+      continue;
+    }
     if (op == OpPalette) {
       const uint16_t count = in.read<uint16_t>();
       for (uint16_t i = 0; i < count && in.ok(); ++i) {
@@ -334,6 +348,8 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         node.shadow_y = in.read<float>();
         break;
       case OpTracking: node.tracking = in.read<float>(); break;
+      case OpImg: node.image = in.read<uint64_t>(); break;
+      case OpFit: node.fit = in.read<uint8_t>(); break;
       case OpGestures: node.gestures = in.read<uint8_t>(); break;
       case OpScrollTo:
         node.scroll_to = in.read<float>();
@@ -389,6 +405,8 @@ void Engine::intrinsic_width(Node &node) {
   if (node.kind == KindInput) {
     node.font = font_for(node);
     content = kInputWidth;
+  } else if (node.kind == KindImage) {
+    if (const auto it = images.find(node.image); it != images.end()) content = static_cast<float>(it->second.w);
   } else if (is_text_leaf(node)) {
     node.font = font_for(node);
     std::string_view rest = node.text;
@@ -530,7 +548,13 @@ void Engine::wrap(Node &node, float inner_width) {
 void Engine::intrinsic_height(Node &node) {
   const float pad_y = node.pad[0] + node.pad[2];
   float content = 0;
-  if (is_text_leaf(node) || node.kind == KindInput) {
+  if (node.kind == KindImage) {
+    const auto it = images.find(node.image);
+    if (it != images.end() && it->second.w) {
+      const float inner_w = std::max(0.f, node.w - node.pad[1] - node.pad[3]);
+      content = inner_w * static_cast<float>(it->second.h) / static_cast<float>(it->second.w);
+    }
+  } else if (is_text_leaf(node) || node.kind == KindInput) {
     wrap(node, std::max(0.f, node.w - node.pad[1] - node.pad[3]));
     const float size = node.font_size > 0 ? node.font_size : kDefaultFontSize;
     content = line_height_for(size) * static_cast<float>(node.line_count);
@@ -1024,6 +1048,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     add_rect(x0, y0, w, h, fade(resolve(Accent)), radius, std::round(2 * dpr), clip);
   }
 
+  if (node.kind == KindImage) paint_image(node, x0, y0, w, h, alpha, radius, clip);
   if (is_text_leaf(node)) paint_text(node, alpha, clip);
   if (node.kind == KindInput) paint_input(node, alpha, clip);
 
@@ -1201,6 +1226,122 @@ std::string Engine::tree_json() const {
   }
   out += "]";
   return out;
+}
+
+}  // namespace qui
+
+namespace qui {
+
+namespace {
+
+struct CropRect {
+  float x0, y0, x1, y1;
+};
+
+void resample(const std::vector<uint8_t> &src, uint32_t sw, uint32_t sh, CropRect crop, int dw, int dh, std::vector<uint8_t> &out) {
+  out.assign(static_cast<size_t>(dw) * static_cast<size_t>(dh) * 4, 0);
+  const float step_x = (crop.x1 - crop.x0) / static_cast<float>(dw), step_y = (crop.y1 - crop.y0) / static_cast<float>(dh);
+  const bool box = step_x > 1.f || step_y > 1.f;
+  for (int y = 0; y < dh; ++y) {
+    const float sy0 = crop.y0 + static_cast<float>(y) * step_y;
+    for (int x = 0; x < dw; ++x) {
+      const float sx0 = crop.x0 + static_cast<float>(x) * step_x;
+      float acc[4] = {0, 0, 0, 0};
+      float weight = 0;
+      if (box) {
+        const int ix0 = static_cast<int>(sx0), iy0 = static_cast<int>(sy0);
+        const int ix1 = std::min(static_cast<int>(sw), std::max(ix0 + 1, static_cast<int>(std::ceil(sx0 + step_x))));
+        const int iy1 = std::min(static_cast<int>(sh), std::max(iy0 + 1, static_cast<int>(std::ceil(sy0 + step_y))));
+        for (int sy = iy0; sy < iy1; ++sy) {
+          for (int sx = ix0; sx < ix1; ++sx) {
+            const uint8_t *p = &src[(static_cast<size_t>(sy) * sw + static_cast<size_t>(sx)) * 4];
+            const float a = static_cast<float>(p[3]);
+            acc[0] += static_cast<float>(p[0]) * a;
+            acc[1] += static_cast<float>(p[1]) * a;
+            acc[2] += static_cast<float>(p[2]) * a;
+            acc[3] += a;
+            weight += 1;
+          }
+        }
+      } else {
+        const float fx = std::clamp(sx0 + step_x / 2 - 0.5f, 0.f, static_cast<float>(sw - 1));
+        const float fy = std::clamp(sy0 + step_y / 2 - 0.5f, 0.f, static_cast<float>(sh - 1));
+        const int ix = static_cast<int>(fx), iy = static_cast<int>(fy);
+        const int jx = std::min(ix + 1, static_cast<int>(sw) - 1), jy = std::min(iy + 1, static_cast<int>(sh) - 1);
+        const float tx = fx - static_cast<float>(ix), ty = fy - static_cast<float>(iy);
+        const float taps[4][3] = {{static_cast<float>(ix), static_cast<float>(iy), (1 - tx) * (1 - ty)},
+                                  {static_cast<float>(jx), static_cast<float>(iy), tx * (1 - ty)},
+                                  {static_cast<float>(ix), static_cast<float>(jy), (1 - tx) * ty},
+                                  {static_cast<float>(jx), static_cast<float>(jy), tx * ty}};
+        for (const auto &tap : taps) {
+          const uint8_t *p = &src[(static_cast<size_t>(tap[1]) * sw + static_cast<size_t>(tap[0])) * 4];
+          const float a = static_cast<float>(p[3]) * tap[2];
+          acc[0] += static_cast<float>(p[0]) * a;
+          acc[1] += static_cast<float>(p[1]) * a;
+          acc[2] += static_cast<float>(p[2]) * a;
+          acc[3] += a;
+        }
+        weight = 1;
+      }
+      uint8_t *o = &out[(static_cast<size_t>(y) * static_cast<size_t>(dw) + static_cast<size_t>(x)) * 4];
+      if (acc[3] > 0) {
+        o[0] = static_cast<uint8_t>(acc[0] / acc[3] + 0.5f);
+        o[1] = static_cast<uint8_t>(acc[1] / acc[3] + 0.5f);
+        o[2] = static_cast<uint8_t>(acc[2] / acc[3] + 0.5f);
+        o[3] = static_cast<uint8_t>(acc[3] / weight + 0.5f);
+      }
+    }
+  }
+}
+
+}  // namespace
+
+const Engine::ImageRegion &Engine::image_region(const Node &node, int box_w, int box_h) {
+  static const ImageRegion none;
+  const auto source = images.find(node.image);
+  if (source == images.end() || box_w <= 0 || box_h <= 0) return none;
+  const ImageSource &img = source->second;
+  const uint64_t cache_key = (node.image * 1099511628211ull) ^ (static_cast<uint64_t>(box_w) << 40) ^ (static_cast<uint64_t>(box_h) << 20) ^ node.fit;
+  if (const auto hit = image_regions.find(cache_key); hit != image_regions.end() && hit->second.source == node.image) return hit->second;
+
+  const float sw = static_cast<float>(img.w), sh = static_cast<float>(img.h);
+  CropRect crop{0, 0, sw, sh};
+  int dw = box_w, dh = box_h;
+  if (node.fit == FitContain) {
+    const float scale = std::min(static_cast<float>(box_w) / sw, static_cast<float>(box_h) / sh);
+    dw = std::max(1, static_cast<int>(std::round(sw * scale)));
+    dh = std::max(1, static_cast<int>(std::round(sh * scale)));
+  } else if (node.fit == FitCover) {
+    const float scale = std::max(static_cast<float>(box_w) / sw, static_cast<float>(box_h) / sh);
+    const float view_w = static_cast<float>(box_w) / scale, view_h = static_cast<float>(box_h) / scale;
+    crop = {(sw - view_w) / 2, (sh - view_h) / 2, (sw + view_w) / 2, (sh + view_h) / 2};
+  }
+  ImageRegion region;
+  region.source = node.image;
+  region.w = dw;
+  region.h = dh;
+  std::vector<uint8_t> pixels;
+  resample(img.rgba, img.w, img.h, crop, dw, dh, pixels);
+  region.ok = fonts.upload_rgba(static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), pixels, region.region);
+  return image_regions[cache_key] = region;
+}
+
+void Engine::paint_image(const Node &node, float x0, float y0, float w, float h, float alpha, float radius, IRect clip) {
+  const float inner_x = x0 + std::round(node.pad[3] * dpr), inner_y = y0 + std::round(node.pad[0] * dpr);
+  const int box_w = static_cast<int>(w - std::round((node.pad[1] + node.pad[3]) * dpr));
+  const int box_h = static_cast<int>(h - std::round((node.pad[0] + node.pad[2]) * dpr));
+  const ImageRegion &region = image_region(node, box_w, box_h);
+  if (!region.ok) return;
+  const float dx = inner_x + static_cast<float>(box_w - region.w) / 2, dy = inner_y + static_cast<float>(box_h - region.h) / 2;
+  const float page_w = static_cast<float>(fonts.page_width(region.region.page)), page_h = static_cast<float>(fonts.page_height(region.region.page));
+  const auto tint = static_cast<uint32_t>(std::clamp(alpha, 0.f, 1.f) * 255.f + 0.5f);
+  const Instance instance{std::round(dx), std::round(dy), static_cast<float>(region.w), static_cast<float>(region.h),
+                          std::round(region.region.u0 * page_w), std::round(region.region.v0 * page_h), 0, 0,
+                          0x00ffffffu | (tint << 24), InstColorGlyph};
+  const RoundClip outer = round_clip_;
+  if (radius > 0) round_clip_ = {static_cast<int>(inner_x), static_cast<int>(inner_y), box_w, box_h, std::max(0.f, radius - std::round(node.pad[0] * dpr))};
+  add_instance(instance, static_cast<int>(region.region.page), clip);
+  round_clip_ = outer;
 }
 
 }  // namespace qui

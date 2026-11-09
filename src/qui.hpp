@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace qui {
@@ -163,6 +164,7 @@ class Ui {
     if (started_) {
       stats_.nodes = nodes_;
       stats_.wire_bytes = buf_.size();
+      flush_images();
       qui_frame_end(app_, buf_.data(), buf_.size());
     }
     size_t len = 0;
@@ -177,6 +179,7 @@ class Ui {
     u8(wire::kVersion);
     u8(theme_);
     emit_palette();
+    image_at_ = buf_.size();
     return true;
   }
 
@@ -244,6 +247,36 @@ class Ui {
     emit_gradient(style.gradient);
     if (style.tracking) f32_op(wire::OpTracking, style.tracking);
     u8(wire::OpEnd);
+  }
+
+  // Hands the engine straight (not premultiplied) RGBA pixels under `key`. Do it
+  // once; `image` then refers to it by key. Loading a key again replaces it.
+  void load_image(std::string_view key, int width, int height, const uint8_t *rgba) {
+    if (width <= 0 || height <= 0 || width > 65535 || height > 65535) return;
+    const uint64_t id = mix(0, key.data(), key.size());
+    loaded_images_.insert(id);
+    const size_t bytes = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+    pending_images_.push_back(wire::OpImageData);
+    pending_images_.insert(pending_images_.end(), reinterpret_cast<const uint8_t *>(&id), reinterpret_cast<const uint8_t *>(&id) + 8);
+    const uint16_t w = static_cast<uint16_t>(width), h = static_cast<uint16_t>(height);
+    pending_images_.insert(pending_images_.end(), reinterpret_cast<const uint8_t *>(&w), reinterpret_cast<const uint8_t *>(&w) + 2);
+    pending_images_.insert(pending_images_.end(), reinterpret_cast<const uint8_t *>(&h), reinterpret_cast<const uint8_t *>(&h) + 2);
+    pending_images_.insert(pending_images_.end(), rgba, rgba + bytes);
+  }
+
+  bool has_image(std::string_view key) const { return loaded_images_.count(mix(0, key.data(), key.size())) != 0; }
+
+  // Draws a loaded picture. With no w and h it takes the image's pixel size; with
+  // only a width it keeps the aspect ratio. `radius` clips it, so a square with
+  // radius = size / 2 is a circle.
+  Response image(std::string_view key, Style style = {}, uint8_t fit = wire::FitCover) {
+    const uint64_t id = open(wire::KindImage, style.key);
+    u8(wire::OpImg);
+    u64(mix(0, key.data(), key.size()));
+    if (fit != wire::FitCover) u8_op(wire::OpFit, fit);
+    emit_style(style);
+    u8(wire::OpEnd);
+    return lookup(id);
   }
 
   Response button(std::string_view label, Style style = {}) {
@@ -484,6 +517,12 @@ class Ui {
     f32(g.angle);
   }
 
+  void flush_images() {
+    if (pending_images_.empty()) return;
+    buf_.insert(buf_.begin() + static_cast<std::ptrdiff_t>(image_at_), pending_images_.begin(), pending_images_.end());
+    pending_images_.clear();
+  }
+
   void emit_palette() {
     if (palette_.empty()) return;
     u8(wire::OpPalette);
@@ -701,6 +740,9 @@ class Ui {
   const uint8_t *res_ = nullptr;
   bool started_ = false;
   uint8_t theme_ = 0;
+  size_t image_at_ = 0;
+  std::vector<uint8_t> pending_images_;
+  std::unordered_set<uint64_t> loaded_images_;
   std::vector<std::pair<uint8_t, Color>> palette_;
   std::unordered_map<std::string, Style> style_classes_;
   std::unordered_map<std::string, TextStyle> text_classes_;

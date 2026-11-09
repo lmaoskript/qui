@@ -97,6 +97,7 @@ function decode(bytes, length) {
   const stack = [root];
   let theme = 0;
   const palette = [];
+  const images = [];
   let current = null;
   let propsStart = 0;
   const seal = () => {
@@ -111,6 +112,13 @@ function decode(bytes, length) {
       const version = r.u8();
       theme = r.u8();
       if (version !== Version) console.error(`qui: app uses wire version ${version} but the patcher expects ${Version}`);
+      continue;
+    }
+    if (op === Op.ImageData) {
+      const lo = r.u32(), hi = r.u32(), w = r.u16(), h = r.u16();
+      const data = new Uint8ClampedArray(r.bytes.subarray(r.at, r.at + w * h * 4));
+      r.at += w * h * 4;
+      images.push([`${hi}:${lo}`, { w, h, data }]);
       continue;
     }
     if (op === Op.Palette) {
@@ -181,6 +189,8 @@ function decode(bytes, length) {
       case Op.Tracking: node.tracking = r.f32(); break;
       case Op.ScrollTo: node.scrollTo = r.f32(); break;
       case Op.Gestures: node.gestures = r.u8(); break;
+      case Op.Img: { const lo = r.u32(), hi = r.u32(); node.image = `${hi}:${lo}`; break; }
+      case Op.Fit: node.fit = r.u8(); break;
       case Op.Uniform: {
         const nameLength = r.u8();
         const name = decoder.decode(r.bytes.subarray(r.at, r.at + nameLength));
@@ -193,11 +203,11 @@ function decode(bytes, length) {
       }
       default:
         console.error(`qui: unknown wire op ${op}, dropping the rest of the frame`);
-        return { root, theme, palette };
+        return { root, theme, palette, images };
     }
   }
   seal();
-  return { root, theme, palette };
+  return { root, theme, palette, images };
 }
 
 function sizeCss(mode, value, property) {
@@ -219,6 +229,7 @@ function definiteHeight(node, parent) {
 
 function css(node, parent) {
   let s = "position:relative;";
+  if (node.kind === Kind.Image) s += "display:block;flex:none;";
   const row = parent.dir === Dir.Row && parent.kind !== Kind.List;
   const column = parent.dir === Dir.Column && parent.kind !== Kind.List;
   const wMode = node.wMode ?? Size.Fit;
@@ -299,7 +310,7 @@ function css(node, parent) {
 
 function tagFor(node) {
   if (node.kind === Kind.Button) return node.role === Role.Link ? "a" : "button";
-  if (node.kind === Kind.Shader) return "canvas";
+  if (node.kind === Kind.Shader || node.kind === Kind.Image) return "canvas";
   if (node.kind === Kind.Input) return node.multiline ? "textarea" : "input";
   if (node.kind === Kind.Text) return node.role === Role.Heading ? "h2" : "span";
   if (node.role === Role.Main) return "main";
@@ -464,6 +475,7 @@ class Patcher {
     this.preventKeys = new Set();
     this.engineMs = 0;
     this.themeIndex = -1;
+    this.images = new Map();
     this.wake = null;
     this.bind();
   }
@@ -888,7 +900,17 @@ class Patcher {
       else el.removeAttribute("data-qp");
       if (node.gestures & Gesture.Pinch) this.bindPinchWheel();
       if (node.kind === Kind.Shader) this.patchShader(el, node);
+      if (node.kind === Kind.Image) el.style.objectFit = ["cover", "contain", "fill"][node.fit ?? 0];
       if (node.kind === Kind.Input) this.patchField(el, node);
+    }
+    if (node.kind === Kind.Image) {
+      const image = this.images.get(node.image);
+      if (image && el.__image !== image) {
+        el.__image = image;
+        el.width = image.w;
+        el.height = image.h;
+        el.getContext("2d").putImageData(new ImageData(image.data, image.w, image.h), 0, 0);
+      }
     }
     if (node.focus && document.activeElement !== el && (node.focus === 2 || !el.__autofocused)) {
       el.__autofocused = true;
@@ -978,7 +1000,8 @@ class Patcher {
 
   apply(bytes, length) {
     const began = performance.now();
-    const { root, theme, palette } = decode(bytes, length);
+    const { root, theme, palette, images } = decode(bytes, length);
+    for (const [id, image] of images) this.images.set(id, image);
     this.setTheme(theme, palette);
     root.dir = Dir.Stack;
     root.kind = Kind.Box;

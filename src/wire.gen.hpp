@@ -6,7 +6,7 @@ namespace qui {
 
 namespace wire {
 
-inline constexpr uint8_t kVersion = 6;
+inline constexpr uint8_t kVersion = 7;
 inline constexpr int kThemeCount = 4;
 inline constexpr int kTokenCount = 19;
 
@@ -57,6 +57,9 @@ enum Op : uint8_t {
   OpScrollTo = 43,
   OpGestures = 44,
   OpPalette = 45,
+  OpImageData = 46,
+  OpImg = 47,
+  OpFit = 48,
 };
 
 enum Kind : uint8_t {
@@ -66,6 +69,7 @@ enum Kind : uint8_t {
   KindList = 3,
   KindShader = 4,
   KindInput = 5,
+  KindImage = 6,
 };
 
 enum Dir : uint8_t {
@@ -79,6 +83,12 @@ enum SizeMode : uint8_t {
   SizeFill = 1,
   SizePx = 2,
   SizePct = 3,
+};
+
+enum Fit : uint8_t {
+  FitCover = 0,
+  FitContain = 1,
+  FitStretch = 2,
 };
 
 enum Flag : uint32_t {

@@ -96,7 +96,7 @@ Run them from the repo root:
 | Windows | Works, tested under Wine |
 | Android | Works, tested on the x86_64 emulator; arm64 builds but has not been run |
 
-Also missing: images, right-to-left paragraph direction and global shortcuts. Android APKs are debug-signed, and `qui build` only packages Go apps for Android.
+Also missing: animated images, right-to-left paragraph direction and global shortcuts. Android APKs are debug-signed, and `qui build` only packages Go apps for Android.
 
 ## Getting started
 

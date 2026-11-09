@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 6
+version 7
 
 kind Box 0
 kind Text 1
@@ -9,6 +9,7 @@ kind Button 2
 kind List 3
 kind Shader 4
 kind Input 5
+kind Image 6
 
 dir Column 0
 dir Row 1
@@ -18,6 +19,10 @@ size Fit 0
 size Fill 1
 size Px 2
 size Pct 3
+
+fit Cover 0
+fit Contain 1
+fit Stretch 2
 
 align Start 0
 align Center 1
@@ -79,6 +84,9 @@ op Tracking 42
 op ScrollTo 43
 op Gestures 44
 op Palette 45
+op ImageData 46
+op Img 47
+op Fit 48
 
 gesture PanX 1
 gesture PanY 2

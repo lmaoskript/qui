@@ -14,6 +14,9 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | Op | Payload |
 | --- | --- |
 | `Frame` | `version:u8 theme:u8` |
+| `ImageData` | `key:u64 w:u16 h:u16` then `w*h*4` bytes of straight RGBA. Sent once per key, directly after `Palette`, and the engine keeps it |
+| `Img` | `key:u64` the image an `Image` node shows |
+| `Fit` | `u8`: `Cover` 0, `Contain` 1, `Stretch` 2 |
 | `Palette` | `count:u16` then `count` of `token:u8 rgba:u32`. Optional, directly after `Frame`. Overrides or adds theme tokens for this frame; ids 20 to 255 are free for apps and show up on the web as `--qui-T<id>` |
 | `Open` | `kind:u8 id:u64` |
 | `End` | none |

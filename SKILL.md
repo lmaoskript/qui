@@ -197,6 +197,17 @@ func main() {
 
 `Src` is GLSL ES 3.00 without `#version` or `precision`, and must define `vec4 shade(vec2 uv)`, with uv in 0..1 from the top-left. `u_time` and `u_resolution` are already declared; declare your own uniforms. `Fps` repaints without running your loop. The CPU backend does not run shaders and paints `Bg` instead, so always set one. A shader that fails to compile also paints `Bg`, and `ui.Shader` returns the compiler log in `Response.Error`, with line numbers relative to `Src`. Declare lookup tables as plain `float A[64]=float[64](...)`, not `const`, which renders as zeros on the Android emulator.
 
+## Images
+
+```go
+if !ui.HasImage("avatar:42") {
+	ui.LoadImage("avatar:42", 128, 128, rgba) // straight RGBA, once
+}
+ui.Image("avatar:42", qui.Style{W: qui.Px(40), H: qui.Px(40), Radius: 20, Clip: true})
+```
+
+`LoadImage` sends pixels once under your key, so load them off the render path as they arrive (decode on a thread, then `Wake`). `Image(key, style, fit)` refers to it by key; `FitCover` (default) crops, `FitContain` letterboxes, `FitStretch` distorts. With no size it uses the pixel size, with only `W` it keeps the aspect ratio. Radius rounds the corners and a square with `Radius = W/2` is a circle. The engine resamples to the on-screen size and keeps its own copy, so load images near the size you show them. On the web it is a `<canvas>`. C++: `ui.load_image(key, w, h, rgba)`, `ui.has_image(key)`, `ui.image(key, style, fit)`.
+
 ## Gestures
 
 Touch taps, scrolling and flings work without any setup. For the rest, set `Gestures` on a box. It does not need `Hit`, and text under it stays selectable.
@@ -319,6 +330,6 @@ Any of the first three variables runs the app offscreen for a few frames and exi
 
 ## Not available yet
 
-Do not assume these exist: images, right-to-left paragraphs (mixed text orders correctly, but the base direction is always left-to-right), global shortcuts. On the web, list spacers use the estimate, so the scrollbar can shift when real heights differ.
+Do not assume these exist: animated images, right-to-left paragraphs (mixed text orders correctly, but the base direction is always left-to-right), global shortcuts. On the web, list spacers use the estimate, so the scrollbar can shift when real heights differ.
 
 To add a node kind, op or token, edit `tools/gen/spec.txt` and run `go run ./tools/gen`; `docs/wire.md` documents the format.

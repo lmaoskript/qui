@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 6
+const wireVersion = 7
 
 const (
 	opEnd         = 0
@@ -49,6 +49,9 @@ const (
 	opScrollTo    = 43
 	opGestures    = 44
 	opPalette     = 45
+	opImageData   = 46
+	opImg         = 47
+	opFit         = 48
 )
 
 const (
@@ -58,6 +61,7 @@ const (
 	kindList   = 3
 	kindShader = 4
 	kindInput  = 5
+	kindImage  = 6
 )
 
 const (
@@ -91,6 +95,12 @@ const (
 	flagPanning      = 16384
 	flagPanEnd       = 32768
 	flagPinching     = 65536
+)
+
+const (
+	FitCover   ImageFit = 0
+	FitContain ImageFit = 1
+	FitStretch ImageFit = 2
 )
 
 const (

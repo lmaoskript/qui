@@ -1,6 +1,7 @@
 package qui
 
 import (
+	"encoding/binary"
 	"sort"
 	"strings"
 )
@@ -178,4 +179,60 @@ func setF(dst *float32, src float32) {
 	if *dst == 0 {
 		*dst = src
 	}
+}
+
+// ImageFit chooses how an Image fills its box: FitCover crops to fill it,
+// FitContain shows the whole image, FitStretch distorts to fit.
+type ImageFit uint8
+
+// LoadImage hands the engine straight (not premultiplied) RGBA pixels under a
+// key of your choosing, once. Later frames refer to it by key with Image and
+// send no pixels. Loading the same key again replaces the picture. Images are
+// at most 65535 pixels on a side; send them near the size you show them,
+// because the engine keeps its own copy.
+func (u *Ui) LoadImage(key string, w, h int, rgba []byte) {
+	if w <= 0 || h <= 0 || w > 65535 || h > 65535 || len(rgba) != w*h*4 {
+		return
+	}
+	id := mixString(0, key)
+	if u.sentImages == nil {
+		u.sentImages = map[uint64]struct{}{}
+	}
+	u.sentImages[id] = struct{}{}
+	u.pendingImgs = append(u.pendingImgs, opImageData)
+	u.pendingImgs = binary.LittleEndian.AppendUint64(u.pendingImgs, id)
+	u.pendingImgs = binary.LittleEndian.AppendUint16(u.pendingImgs, uint16(w))
+	u.pendingImgs = binary.LittleEndian.AppendUint16(u.pendingImgs, uint16(h))
+	u.pendingImgs = append(u.pendingImgs, rgba...)
+}
+
+// HasImage reports whether LoadImage was called for the key.
+func (u *Ui) HasImage(key string) bool {
+	_, ok := u.sentImages[mixString(0, key)]
+	return ok
+}
+
+// Image draws a loaded picture. With no W and H it takes the image's pixel size;
+// with only a width it keeps the aspect ratio. Radius clips it, so W == H and
+// Radius == W/2 gives a circle. A key that was never loaded draws nothing but
+// still takes its space once loaded.
+func (u *Ui) Image(key string, s Style, fit ...ImageFit) Response {
+	id := u.open(kindImage, s.Key)
+	u.u8(opImg)
+	u.u64(mixString(0, key))
+	if len(fit) > 0 && fit[0] != FitCover {
+		u.u8Op(opFit, uint8(fit[0]))
+	}
+	u.emitStyle(&s)
+	u.u8(opEnd)
+	return u.lookup(id)
+}
+
+func (u *Ui) flushImages() {
+	if len(u.pendingImgs) == 0 {
+		return
+	}
+	tail := append([]byte(nil), u.buf[u.imageAt:]...)
+	u.buf = append(append(u.buf[:u.imageAt], u.pendingImgs...), tail...)
+	u.pendingImgs = u.pendingImgs[:0]
 }

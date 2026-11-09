@@ -66,6 +66,8 @@ struct Node {
   int64_t item = -1;
   float fps = 0;
   uint32_t uniform_first = 0, uniform_count = 0;
+  uint64_t image = 0;
+  uint8_t fit = 0;
 
   float iw = 0, ih = 0, x = 0, y = 0, w = 0, h = 0;
   uint32_t line_first = 0, line_count = 0;
@@ -267,6 +269,20 @@ class Engine {
   TextShaper shaper{fonts};
   FrameData frame, previous;
   uint8_t theme = 0;
+  struct ImageSource {
+    uint32_t w = 0, h = 0;
+    std::vector<uint8_t> rgba;
+  };
+  struct ImageRegion {
+    AtlasRegion region;
+    int w = 0, h = 0;
+    bool ok = false;
+    uint64_t source = 0;
+  };
+  std::unordered_map<uint64_t, ImageSource> images;
+  std::unordered_map<uint64_t, ImageRegion> image_regions;
+  const ImageRegion &image_region(const Node &node, int box_w, int box_h);
+  void paint_image(const Node &node, float x0, float y0, float w, float h, float alpha, float radius, IRect clip);
   std::array<uint32_t, 256> palette{};
   std::bitset<256> palette_set;
   float dpr = 1;

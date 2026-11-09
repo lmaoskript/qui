@@ -101,6 +101,8 @@ class FontManager {
   uint32_t atlas_page_count() const {
     return static_cast<uint32_t>(pages_.size());
   }
+  uint32_t page_width(uint32_t page) const { return pages_[page].width; }
+  uint32_t page_height(uint32_t page) const { return pages_[page].height; }
   uint32_t atlas_width() const { return kDefaultAtlasSize; }
   uint32_t atlas_height() const { return kDefaultAtlasSize; }
 
