@@ -121,6 +121,11 @@ function decode(bytes, length) {
       images.push([`${hi}:${lo}`, { w, h, data }]);
       continue;
     }
+    if (op === Op.ImageFree) {
+      const lo = r.u32(), hi = r.u32();
+      images.push([`${hi}:${lo}`, null]);
+      continue;
+    }
     if (op === Op.Palette) {
       for (let n = r.u16(); n > 0; n--) palette.push([r.u8(), r.u32()]);
       continue;
@@ -179,6 +184,7 @@ function decode(bytes, length) {
       case Op.Virtual: node.count = r.u32(); node.est = r.f32(); node.bottom = r.u8() !== 0; break;
       case Op.Item: node.item = r.u32(); break;
       case Op.Prepend: node.prepend = r.u32(); break;
+      case Op.Jump: r.u32(); break;
       case Op.Src: node.src = r.str(); break;
       case Op.Fps: node.fps = r.f32(); break;
       case Op.Placeholder: node.placeholder = r.str(); break;
@@ -1054,7 +1060,10 @@ class Patcher {
   apply(bytes, length) {
     const began = performance.now();
     const { root, theme, palette, images } = decode(bytes, length);
-    for (const [id, image] of images) this.images.set(id, image);
+    for (const [id, image] of images) {
+      if (image) this.images.set(id, image);
+      else this.images.delete(id);
+    }
     this.setTheme(theme, palette);
     root.dir = Dir.Stack;
     root.kind = Kind.Box;

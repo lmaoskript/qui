@@ -60,6 +60,8 @@ struct Node {
   float border_w = 0, radius = 0, opacity = 1, font_size = 0;
   uint32_t gradient_from = 0, gradient_to = 0, shadow = 0;
   float gradient_angle = 0, shadow_blur = 0, shadow_y = 0, tracking = 0, scroll_to = 0;
+  uint32_t jump = 0;
+  bool has_jump = false;
   std::string_view text, label, src, placeholder;
   uint32_t count = 0;
   float est = 0;
@@ -280,18 +282,21 @@ class Engine {
   std::vector<TextStyleSpan> span_scratch;
   struct ImageSource {
     uint32_t w = 0, h = 0;
+    uint64_t version = 0;
     std::vector<uint8_t> rgba;
   };
   struct ImageRegion {
     AtlasRegion region;
     int w = 0, h = 0;
+    uint32_t alloc_w = 0, alloc_h = 0;
     bool ok = false;
-    uint64_t source = 0;
+    uint64_t source = 0, version = 0, last_used = 0;
   };
   std::unordered_map<uint64_t, ImageSource> images;
   std::unordered_map<uint64_t, ImageRegion> image_regions;
   const ImageRegion &image_region(const Node &node, int box_w, int box_h);
   const ImageRegion &image_region_for(uint64_t key, uint8_t fit, int box_w, int box_h);
+  void evict_image_regions();
   void paint_image(const Node &node, float x0, float y0, float w, float h, float alpha, float radius, IRect clip);
   std::array<uint32_t, 256> palette{};
   std::bitset<256> palette_set;

@@ -93,6 +93,14 @@ class FontManager {
                                uint32_t quarter_pixel = 0);
   bool upload_rgba(uint32_t width, uint32_t height,
                    const std::vector<uint8_t> &pixels, AtlasRegion &region);
+  // Reserves atlas space that can be rewritten in place and returned, for images
+  // that change or scroll away. Reuses a released region when one fits.
+  bool allocate_rgba(uint32_t width, uint32_t height, AtlasRegion &region,
+                     uint32_t &alloc_width, uint32_t &alloc_height);
+  void write_rgba(const AtlasRegion &region, uint32_t width, uint32_t height,
+                  const std::vector<uint8_t> &pixels);
+  void release_rgba(const AtlasRegion &region, uint32_t alloc_width,
+                    uint32_t alloc_height);
 
   const std::vector<AtlasUpload> &pending_uploads() const {
     return pending_uploads_;
@@ -144,6 +152,11 @@ class FontManager {
   FT_Library library_ = nullptr;
   std::vector<std::unique_ptr<FontInstance>> fonts_;
   std::vector<AtlasPage> pages_;
+  struct FreeRegion {
+    AtlasRegion region;
+    uint32_t w = 0, h = 0;
+  };
+  std::vector<FreeRegion> free_rgba_;
   std::vector<AtlasUpload> pending_uploads_;
   std::unordered_map<RgbaUploadKey, AtlasRegion, RgbaUploadKeyHash>
       rgba_upload_cache_;

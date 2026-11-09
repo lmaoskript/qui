@@ -39,6 +39,8 @@ constexpr double kNever = std::numeric_limits<double>::infinity();
 
 std::string g_app_id;
 
+constexpr uint32_t kKeyReleased = 0x100;
+
 uint32_t key_from_sdl(SDL_Keycode key) {
   switch (key) {
     case SDLK_LEFT: return KeyLeft;
@@ -51,6 +53,14 @@ uint32_t key_from_sdl(SDL_Keycode key) {
     case SDLK_PAGEDOWN: return KeyPageDown;
     case SDLK_KP_ENTER: return KeyEnter;
     case SDLK_AC_BACK: return KeyEscape;
+    case SDLK_LSHIFT: return KeyLeftShift;
+    case SDLK_RSHIFT: return KeyRightShift;
+    case SDLK_LCTRL: return KeyLeftCtrl;
+    case SDLK_RCTRL: return KeyRightCtrl;
+    case SDLK_LALT: return KeyLeftAlt;
+    case SDLK_RALT: return KeyRightAlt;
+    case SDLK_LGUI: return KeyLeftMeta;
+    case SDLK_RGUI: return KeyRightMeta;
     default: break;
   }
   if (key >= SDLK_F1 && key <= SDLK_F12) return KeyF1 + (key - SDLK_F1);
@@ -205,7 +215,7 @@ struct qui_app {
   SDL_Window *window = nullptr;
   SDL_GLContext gl = nullptr;
 
-  bool headless = false, sdl_ready = false, quit = false, dirty = true, force_full = true;
+  bool headless = false, sdl_ready = false, quit = false, dirty = true, force_full = true, window_focused = true;
   int frames = 0;
   int pixel_w = 0, pixel_h = 0;
   float dpr = 1, logical_w = 0, logical_h = 0;
@@ -559,7 +569,7 @@ struct qui_app {
         return true;
       case KeyUp:
       case KeyDown:
-        if (!state.multiline) return false;
+        if (!state.multiline || text.empty()) return false;
         move_caret(state, engine.input_vertical(state, key == KeyUp ? -1 : 1), shift);
         return true;
       case KeyHome:
@@ -1075,6 +1085,22 @@ struct qui_app {
         if (e.key.key == SDLK_AC_BACK) back_pending = true;
         on_key(key_from_sdl(e.key.key), mods_from_sdl(e.key.mod));
         break;
+      case SDL_EVENT_KEY_UP:
+        keys.push_back(key_from_sdl(e.key.key));
+        keys.push_back(mods_from_sdl(e.key.mod) | kKeyReleased);
+        dirty = true;
+        break;
+      case SDL_EVENT_DROP_FILE:
+        if (e.drop.data) {
+          std::lock_guard lock(picked_lock);
+          picked.emplace_back(e.drop.data);
+        }
+        dirty = true;
+        break;
+      case SDL_EVENT_WINDOW_FOCUS_GAINED:
+        window_focused = true;
+        dirty = true;
+        break;
       case SDL_EVENT_TEXT_INPUT:
         if (InputState *state = focused_input()) {
           state->preedit.clear();
@@ -1085,6 +1111,7 @@ struct qui_app {
         set_preedit(e.edit.text ? e.edit.text : "", e.edit.start > 0 ? static_cast<size_t>(e.edit.start) : 0);
         break;
       case SDL_EVENT_WINDOW_FOCUS_LOST:
+        window_focused = false;
         dirty = true;
         break;
       default:
@@ -1343,6 +1370,8 @@ struct qui_app {
     std::memcpy(p + 8, header, sizeof(header));
     std::memcpy(p + 32, offsets, sizeof(offsets));
     std::memcpy(p + 48, &engine_ms, 4);
+    const uint32_t focused_flag = window_focused ? 1u : 0u;
+    std::memcpy(p + 52, &focused_flag, 4);
     if (!keys.empty()) std::memcpy(p + keys_at, keys.data(), keys.size() * 4);
     if (!text_blob.empty()) std::memcpy(p + text_at, text_blob.data(), text_blob.size());
 
@@ -1515,6 +1544,20 @@ void qui_wake(qui_app *app) {
   SDL_Event event{};
   event.type = SDL_EVENT_USER;
   SDL_PushEvent(&event);
+}
+
+namespace {
+Uint32 delayed_wake(void *, SDL_TimerID, Uint32) {
+  SDL_Event event{};
+  event.type = SDL_EVENT_USER;
+  SDL_PushEvent(&event);
+  return 0;
+}
+}  // namespace
+
+void qui_wake_after(qui_app *app, uint32_t ms) {
+  if (!app || app->headless) return;
+  SDL_AddTimer(ms, delayed_wake, nullptr);
 }
 
 qui_app *qui_open(const char *title, int width, int height) {

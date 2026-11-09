@@ -19,6 +19,9 @@ void qui_close(qui_app *app);
 /* Requests a frame. Safe to call from any thread while the app is open. */
 void qui_wake(qui_app *app);
 
+/* Requests a frame after `ms` milliseconds. */
+void qui_wake_after(qui_app *app, uint32_t ms);
+
 /* Tells the backend the app acted on this frame's Escape key. On Android an
  * unclaimed Back press sends the app to the background. */
 void qui_consume_back(qui_app *app);

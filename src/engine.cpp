@@ -223,8 +223,18 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         source.w = w;
         source.h = h;
         source.rgba.assign(data.begin(), data.end());
-        std::erase_if(image_regions, [&](const auto &kv) { return kv.second.source == key; });
+        ++source.version;
       }
+      continue;
+    }
+    if (op == OpImageFree) {
+      const uint64_t key = in.read<uint64_t>();
+      images.erase(key);
+      std::erase_if(image_regions, [&](const auto &kv) {
+        if (kv.second.source != key) return false;
+        if (kv.second.ok) fonts.release_rgba(kv.second.region, kv.second.alloc_w, kv.second.alloc_h);
+        return true;
+      });
       continue;
     }
     if (op == OpPalette) {
@@ -328,6 +338,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         break;
       case OpItem: node.item = in.read<uint32_t>(); break;
       case OpPrepend: node.prepend = in.read<uint32_t>(); break;
+      case OpJump: node.jump = in.read<uint32_t>(); node.has_jump = true; break;
       case OpSrc: node.src = in.str(); break;
       case OpFps: node.fps = in.read<float>(); break;
       case OpPlaceholder: node.placeholder = in.str(); break;
@@ -675,6 +686,13 @@ void Engine::place_list(Node &node) {
     state.heights.swap(shifted);
     state.anchor += node.prepend;
   }
+  if (node.has_jump && node.jump < state.count) {
+    state.anchor = node.jump;
+    state.offset = 0;
+    state.stuck = false;
+    state.jumped = true;
+    wants_another_frame = true;
+  }
   if (state.anchor >= state.count) state.anchor = state.count ? state.count - 1 : 0;
 
   const float left = node.x + node.pad[3];
@@ -854,6 +872,7 @@ void Engine::place_children(Node &node) {
 void Engine::layout(float width, float height, float scale) {
   dpr = scale;
   ++frame_number;
+  evict_image_regions();
   wants_another_frame = false;
   Node &root = nodes[0];
   root.w_val = width;
@@ -1415,7 +1434,11 @@ const Engine::ImageRegion &Engine::image_region_for(uint64_t key, uint8_t fit, i
   if (source == images.end() || box_w <= 0 || box_h <= 0) return none;
   const ImageSource &img = source->second;
   const uint64_t cache_key = (key * 1099511628211ull) ^ (static_cast<uint64_t>(box_w) << 40) ^ (static_cast<uint64_t>(box_h) << 20) ^ fit;
-  if (const auto hit = image_regions.find(cache_key); hit != image_regions.end() && hit->second.source == key) return hit->second;
+  const auto hit = image_regions.find(cache_key);
+  if (hit != image_regions.end() && hit->second.source == key && hit->second.version == img.version) {
+    hit->second.last_used = frame_number;
+    return hit->second;
+  }
 
   const float sw = static_cast<float>(img.w), sh = static_cast<float>(img.h);
   CropRect crop{0, 0, sw, sh};
@@ -1429,14 +1452,34 @@ const Engine::ImageRegion &Engine::image_region_for(uint64_t key, uint8_t fit, i
     const float view_w = static_cast<float>(box_w) / scale, view_h = static_cast<float>(box_h) / scale;
     crop = {(sw - view_w) / 2, (sh - view_h) / 2, (sw + view_w) / 2, (sh + view_h) / 2};
   }
-  ImageRegion region;
-  region.source = key;
-  region.w = dw;
-  region.h = dh;
   std::vector<uint8_t> pixels;
   resample(img.rgba, img.w, img.h, crop, dw, dh, pixels);
-  region.ok = fonts.upload_rgba(static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), pixels, region.region);
-  return image_regions[cache_key] = region;
+
+  ImageRegion &region = image_regions[cache_key];
+  if (region.ok && (region.source != key || region.w != dw || region.h != dh)) {
+    fonts.release_rgba(region.region, region.alloc_w, region.alloc_h);
+    region.ok = false;
+  }
+  if (!region.ok) {
+    region.ok = fonts.allocate_rgba(static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), region.region, region.alloc_w, region.alloc_h);
+  }
+  region.source = key;
+  region.version = img.version;
+  region.last_used = frame_number;
+  region.w = dw;
+  region.h = dh;
+  if (region.ok) fonts.write_rgba(region.region, static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), pixels);
+  return region;
+}
+
+void Engine::evict_image_regions() {
+  constexpr uint64_t kInterval = 240, kIdleFrames = 900;
+  if (frame_number % kInterval != 0) return;
+  std::erase_if(image_regions, [&](const auto &kv) {
+    if (frame_number - kv.second.last_used < kIdleFrames) return false;
+    if (kv.second.ok) fonts.release_rgba(kv.second.region, kv.second.alloc_w, kv.second.alloc_h);
+    return true;
+  });
 }
 
 void Engine::paint_image(const Node &node, float x0, float y0, float w, float h, float alpha, float radius, IRect clip) {

@@ -1,6 +1,6 @@
-export const Version = 10;
+export const Version = 11;
 
-export const Op = {End: 0, Open: 1, Frame: 2, Dir: 3, Width: 4, Height: 5, MinW: 6, MaxW: 7, MinH: 8, MaxH: 9, Pad: 10, Gap: 11, Align: 12, Justify: 13, Pos: 14, Bg: 15, Fg: 16, Border: 17, Radius: 18, Opacity: 19, Clip: 20, Scroll: 21, Hit: 22, Role: 23, Label: 24, Text: 25, FontSize: 26, Weight: 27, Mono: 28, Ellipsis: 29, Virtual: 30, Item: 31, Src: 32, Uniform: 33, Fps: 34, Placeholder: 35, Multiline: 36, Password: 37, Focus: 38, Z: 39, Gradient: 40, Shadow: 41, Tracking: 42, ScrollTo: 43, Gestures: 44, Palette: 45, ImageData: 46, Img: 47, Fit: 48, Span: 49, Prepend: 50};
+export const Op = {End: 0, Open: 1, Frame: 2, Dir: 3, Width: 4, Height: 5, MinW: 6, MaxW: 7, MinH: 8, MaxH: 9, Pad: 10, Gap: 11, Align: 12, Justify: 13, Pos: 14, Bg: 15, Fg: 16, Border: 17, Radius: 18, Opacity: 19, Clip: 20, Scroll: 21, Hit: 22, Role: 23, Label: 24, Text: 25, FontSize: 26, Weight: 27, Mono: 28, Ellipsis: 29, Virtual: 30, Item: 31, Src: 32, Uniform: 33, Fps: 34, Placeholder: 35, Multiline: 36, Password: 37, Focus: 38, Z: 39, Gradient: 40, Shadow: 41, Tracking: 42, ScrollTo: 43, Gestures: 44, Palette: 45, ImageData: 46, Img: 47, Fit: 48, Span: 49, Prepend: 50, Jump: 51, ImageFree: 52};
 export const Kind = {Box: 0, Text: 1, Button: 2, List: 3, Shader: 4, Input: 5, Image: 6};
 export const Dir = {Column: 0, Row: 1, Stack: 2};
 export const Size = {Fit: 0, Fill: 1, Px: 2, Pct: 3};
@@ -9,7 +9,7 @@ export const Span = {Bold: 1, Mono: 2, Italic: 4, Underline: 8, Strike: 16, Imag
 export const Align = {Start: 0, Center: 1, End: 2, Stretch: 3, Between: 4};
 export const Role = {None: 0, Heading: 1, Link: 2, Image: 3, Main: 4, Nav: 5};
 export const Flag = {Hovered: 1, Pressed: 2, Clicked: 4, RightClicked: 8, Focused: 16, DragStart: 32, Dragging: 64, DragEnd: 128, Changed: 256, Submitted: 512, ShaderError: 1024, LongPressed: 2048, DoubleTapped: 4096, PanStart: 8192, Panning: 16384, PanEnd: 32768, Pinching: 65536};
-export const Key = {Backspace: 8, Tab: 9, Enter: 13, Escape: 27, Space: 32, Delete: 127, Left: 1000, Right: 1001, Up: 1002, Down: 1003, Home: 1004, End: 1005, PageUp: 1006, PageDown: 1007, F1: 1011, F2: 1012, F3: 1013, F4: 1014, F5: 1015, F6: 1016, F7: 1017, F8: 1018, F9: 1019, F10: 1020, F11: 1021, F12: 1022};
+export const Key = {Backspace: 8, Tab: 9, Enter: 13, Escape: 27, Space: 32, Delete: 127, Left: 1000, Right: 1001, Up: 1002, Down: 1003, Home: 1004, End: 1005, PageUp: 1006, PageDown: 1007, F1: 1011, F2: 1012, F3: 1013, F4: 1014, F5: 1015, F6: 1016, F7: 1017, F8: 1018, F9: 1019, F10: 1020, F11: 1021, F12: 1022, LeftShift: 1030, RightShift: 1031, LeftCtrl: 1032, RightCtrl: 1033, LeftAlt: 1034, RightAlt: 1035, LeftMeta: 1036, RightMeta: 1037};
 export const Mod = {Shift: 1, Ctrl: 2, Alt: 4, Meta: 8};
 export const Gesture = {PanX: 1, PanY: 2, Pinch: 4, TouchOnly: 8};
 

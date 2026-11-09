@@ -136,6 +136,8 @@ struct ListOptions {
   // Items inserted at the front this frame; the rows on screen keep their place.
   // Native only: the browser ignores it.
   uint32_t prepend = 0;
+  // Scrolls this item to the top of the list on this frame only. Native only.
+  std::optional<uint32_t> jump_to{};
 };
 
 struct Uniform {
@@ -210,6 +212,7 @@ class Ui {
   }
 
   void wake() { qui_wake(app_); }
+  void wake_after(uint32_t ms) { qui_wake_after(app_, ms); }
   // Opens the system file picker without blocking; chosen paths arrive later
   // through picked_files, and the app is woken when they do. Native only.
   void pick_files(bool multiple) { qui_pick_files(app_, multiple ? 1 : 0); }
@@ -254,6 +257,7 @@ class Ui {
   float pointer_x() const { return header(24); }
   float pointer_y() const { return header(28); }
   bool pointer_down() const { return header_u32(44) != 0; }
+  bool window_focused() const { return header_u32(52) != 0; }
   Stats stats() const {
     Stats out = stats_;
     out.engine_ms = header(48);
@@ -329,6 +333,14 @@ class Ui {
     pending_images_.insert(pending_images_.end(), reinterpret_cast<const uint8_t *>(&w), reinterpret_cast<const uint8_t *>(&w) + 2);
     pending_images_.insert(pending_images_.end(), reinterpret_cast<const uint8_t *>(&h), reinterpret_cast<const uint8_t *>(&h) + 2);
     pending_images_.insert(pending_images_.end(), rgba, rgba + bytes);
+  }
+
+  // Forgets a loaded image and its pixels.
+  void free_image(std::string_view key) {
+    const uint64_t id = mix(0, key.data(), key.size());
+    if (!loaded_images_.erase(id)) return;
+    pending_images_.push_back(wire::OpImageFree);
+    pending_images_.insert(pending_images_.end(), reinterpret_cast<const uint8_t *>(&id), reinterpret_cast<const uint8_t *>(&id) + 8);
   }
 
   bool has_image(std::string_view key) const { return loaded_images_.count(mix(0, key.data(), key.size())) != 0; }
@@ -420,6 +432,10 @@ class Ui {
       u8(wire::OpPrepend);
       u32(options.prepend);
     }
+    if (options.jump_to) {
+      u8(wire::OpJump);
+      u32(*options.jump_to);
+    }
     const Response result = lookup(id);
     uint32_t first = result.first + options.prepend, visible = result.count;
     if (!result.found || visible == 0) {
@@ -462,6 +478,25 @@ class Ui {
     else if (options.autofocus) u8_op(wire::OpFocus, 1);
     u8(wire::OpEnd);
     return result;
+  }
+
+  struct KeyEvent {
+    uint32_t key = 0, mods = 0;
+    bool released = false;
+  };
+
+  // Everything typed this frame that no input claimed, releases included.
+  std::vector<KeyEvent> key_events() const {
+    std::vector<KeyEvent> out;
+    if (!res_) return out;
+    const uint32_t at = header_u32(32), count = header_u32(36);
+    out.reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+      uint32_t event[2];
+      std::memcpy(event, res_ + at + i * 8, 8);
+      out.push_back({event[0], event[1] & 0xff, (event[1] & 0x100) != 0});
+    }
+    return out;
   }
 
   bool key_pressed(uint32_t key, uint32_t mods = 0) {

@@ -407,6 +407,65 @@ bool FontManager::upload_rgba(uint32_t width, uint32_t height,
   return true;
 }
 
+bool FontManager::allocate_rgba(uint32_t width, uint32_t height, AtlasRegion &region, uint32_t &alloc_width, uint32_t &alloc_height) {
+  if (width == 0 || height == 0) return false;
+  auto best = free_rgba_.end();
+  for (auto it = free_rgba_.begin(); it != free_rgba_.end(); ++it) {
+    if (it->w < width || it->h < height) continue;
+    if (static_cast<uint64_t>(it->w) * it->h > static_cast<uint64_t>(width) * height * 2) continue;
+    if (best == free_rgba_.end() || it->w * it->h < best->w * best->h) best = it;
+  }
+  const auto fill = [&](uint32_t page, uint32_t x, uint32_t y) {
+    const float page_w = static_cast<float>(pages_[page].width);
+    const float page_h = static_cast<float>(pages_[page].height);
+    region.page = page;
+    region.u0 = static_cast<float>(x) / page_w;
+    region.v0 = static_cast<float>(y) / page_h;
+    region.u1 = static_cast<float>(x + width) / page_w;
+    region.v1 = static_cast<float>(y + height) / page_h;
+  };
+  if (best != free_rgba_.end()) {
+    const uint32_t page = best->region.page;
+    const uint32_t x = static_cast<uint32_t>(std::lround(best->region.u0 * static_cast<float>(pages_[page].width)));
+    const uint32_t y = static_cast<uint32_t>(std::lround(best->region.v0 * static_cast<float>(pages_[page].height)));
+    alloc_width = best->w;
+    alloc_height = best->h;
+    free_rgba_.erase(best);
+    fill(page, x, y);
+    return true;
+  }
+  uint32_t page = 0, x = 0, y = 0;
+  if (!allocate_atlas_rect(width, height, page, x, y)) return false;
+  alloc_width = width;
+  alloc_height = height;
+  fill(page, x, y);
+  return true;
+}
+
+void FontManager::release_rgba(const AtlasRegion &region, uint32_t alloc_width, uint32_t alloc_height) {
+  free_rgba_.push_back({region, alloc_width, alloc_height});
+}
+
+void FontManager::write_rgba(const AtlasRegion &region, uint32_t width, uint32_t height, const std::vector<uint8_t> &pixels) {
+  if (pixels.size() != static_cast<size_t>(width) * height * 4) return;
+  AtlasUpload upload;
+  upload.atlas_page = region.page;
+  upload.page_width = pages_[region.page].width;
+  upload.page_height = pages_[region.page].height;
+  upload.destination_x = static_cast<uint32_t>(std::lround(region.u0 * static_cast<float>(upload.page_width)));
+  upload.destination_y = static_cast<uint32_t>(std::lround(region.v0 * static_cast<float>(upload.page_height)));
+  upload.width = width;
+  upload.height = height;
+  upload.pixels = pixels;
+  for (size_t at = 0; at < upload.pixels.size(); at += 4) {
+    const uint32_t alpha = upload.pixels[at + 3];
+    upload.pixels[at] = static_cast<uint8_t>((upload.pixels[at] * alpha + 127) / 255);
+    upload.pixels[at + 1] = static_cast<uint8_t>((upload.pixels[at + 1] * alpha + 127) / 255);
+    upload.pixels[at + 2] = static_cast<uint8_t>((upload.pixels[at + 2] * alpha + 127) / 255);
+  }
+  pending_uploads_.push_back(std::move(upload));
+}
+
 const CachedGlyph *FontManager::get_glyph(FontInstanceId font,
                                           uint32_t glyph_id,
                                           uint32_t quarter_pixel) {

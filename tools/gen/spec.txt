@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 10
+version 11
 
 kind Box 0
 kind Text 1
@@ -96,6 +96,8 @@ op Img 47
 op Fit 48
 op Span 49
 op Prepend 50
+op Jump 51
+op ImageFree 52
 
 gesture PanX 1
 gesture PanY 2
@@ -128,6 +130,14 @@ key F9 1019
 key F10 1020
 key F11 1021
 key F12 1022
+key LeftShift 1030
+key RightShift 1031
+key LeftCtrl 1032
+key RightCtrl 1033
+key LeftAlt 1034
+key RightAlt 1035
+key LeftMeta 1036
+key RightMeta 1037
 
 mod Shift 1
 mod Ctrl 2

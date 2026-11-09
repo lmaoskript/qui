@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 10
+const wireVersion = 11
 
 const (
 	opEnd         = 0
@@ -54,6 +54,8 @@ const (
 	opFit         = 48
 	opSpan        = 49
 	opPrepend     = 50
+	opJump        = 51
+	opImageFree   = 52
 )
 
 const (
@@ -161,32 +163,40 @@ const (
 )
 
 const (
-	KeyBackspace Key = 8
-	KeyTab       Key = 9
-	KeyEnter     Key = 13
-	KeyEscape    Key = 27
-	KeySpace     Key = 32
-	KeyDelete    Key = 127
-	KeyLeft      Key = 1000
-	KeyRight     Key = 1001
-	KeyUp        Key = 1002
-	KeyDown      Key = 1003
-	KeyHome      Key = 1004
-	KeyEnd       Key = 1005
-	KeyPageUp    Key = 1006
-	KeyPageDown  Key = 1007
-	KeyF1        Key = 1011
-	KeyF2        Key = 1012
-	KeyF3        Key = 1013
-	KeyF4        Key = 1014
-	KeyF5        Key = 1015
-	KeyF6        Key = 1016
-	KeyF7        Key = 1017
-	KeyF8        Key = 1018
-	KeyF9        Key = 1019
-	KeyF10       Key = 1020
-	KeyF11       Key = 1021
-	KeyF12       Key = 1022
+	KeyBackspace  Key = 8
+	KeyTab        Key = 9
+	KeyEnter      Key = 13
+	KeyEscape     Key = 27
+	KeySpace      Key = 32
+	KeyDelete     Key = 127
+	KeyLeft       Key = 1000
+	KeyRight      Key = 1001
+	KeyUp         Key = 1002
+	KeyDown       Key = 1003
+	KeyHome       Key = 1004
+	KeyEnd        Key = 1005
+	KeyPageUp     Key = 1006
+	KeyPageDown   Key = 1007
+	KeyF1         Key = 1011
+	KeyF2         Key = 1012
+	KeyF3         Key = 1013
+	KeyF4         Key = 1014
+	KeyF5         Key = 1015
+	KeyF6         Key = 1016
+	KeyF7         Key = 1017
+	KeyF8         Key = 1018
+	KeyF9         Key = 1019
+	KeyF10        Key = 1020
+	KeyF11        Key = 1021
+	KeyF12        Key = 1022
+	KeyLeftShift  Key = 1030
+	KeyRightShift Key = 1031
+	KeyLeftCtrl   Key = 1032
+	KeyRightCtrl  Key = 1033
+	KeyLeftAlt    Key = 1034
+	KeyRightAlt   Key = 1035
+	KeyLeftMeta   Key = 1036
+	KeyRightMeta  Key = 1037
 )
 
 const (

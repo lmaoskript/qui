@@ -206,6 +206,17 @@ func (u *Ui) LoadImage(key string, w, h int, rgba []byte) {
 	u.pendingImgs = append(u.pendingImgs, rgba...)
 }
 
+// FreeImage forgets a loaded image and its pixels.
+func (u *Ui) FreeImage(key string) {
+	id := mixString(0, key)
+	if _, ok := u.sentImages[id]; !ok {
+		return
+	}
+	delete(u.sentImages, id)
+	u.pendingImgs = append(u.pendingImgs, opImageFree)
+	u.pendingImgs = binary.LittleEndian.AppendUint64(u.pendingImgs, id)
+}
+
 // HasImage reports whether LoadImage was called for the key.
 func (u *Ui) HasImage(key string) bool {
 	_, ok := u.sentImages[mixString(0, key)]

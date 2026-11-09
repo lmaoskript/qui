@@ -6,7 +6,7 @@ namespace qui {
 
 namespace wire {
 
-inline constexpr uint8_t kVersion = 10;
+inline constexpr uint8_t kVersion = 11;
 inline constexpr int kThemeCount = 4;
 inline constexpr int kTokenCount = 19;
 
@@ -62,6 +62,8 @@ enum Op : uint8_t {
   OpFit = 48,
   OpSpan = 49,
   OpPrepend = 50,
+  OpJump = 51,
+  OpImageFree = 52,
 };
 
 enum Kind : uint8_t {
@@ -217,6 +219,14 @@ inline constexpr uint32_t KeyF9 = 1019;
 inline constexpr uint32_t KeyF10 = 1020;
 inline constexpr uint32_t KeyF11 = 1021;
 inline constexpr uint32_t KeyF12 = 1022;
+inline constexpr uint32_t KeyLeftShift = 1030;
+inline constexpr uint32_t KeyRightShift = 1031;
+inline constexpr uint32_t KeyLeftCtrl = 1032;
+inline constexpr uint32_t KeyRightCtrl = 1033;
+inline constexpr uint32_t KeyLeftAlt = 1034;
+inline constexpr uint32_t KeyRightAlt = 1035;
+inline constexpr uint32_t KeyLeftMeta = 1036;
+inline constexpr uint32_t KeyRightMeta = 1037;
 
 inline constexpr uint32_t ModShift = 1;
 inline constexpr uint32_t ModCtrl = 2;

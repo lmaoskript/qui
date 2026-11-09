@@ -123,6 +123,9 @@ type ListOptions struct {
 	// frame, so the rows on screen keep their place. Native only: the browser
 	// ignores it.
 	Prepend int
+	// JumpTo scrolls that item to the top of the list on this frame only. Native
+	// only: the browser ignores it.
+	JumpTo *int
 }
 
 type Uniform struct {
@@ -291,6 +294,10 @@ func (u *Ui) List(key string, count int, estimate float32, o ListOptions, row fu
 		u.u8(1)
 	} else {
 		u.u8(0)
+	}
+	if o.JumpTo != nil {
+		u.u8(opJump)
+		u.u32(uint32(*o.JumpTo))
 	}
 	if o.Prepend > 0 {
 		u.u8(opPrepend)
