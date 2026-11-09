@@ -212,7 +212,8 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       continue;
     }
     if (op == OpOpen) {
-      Node node;
+      const auto index = static_cast<int32_t>(nodes.size());
+      Node &node = nodes.emplace_back();
       node.kind = in.read<uint8_t>();
       node.id = in.read<uint64_t>();
       node.parent = stack.back();
@@ -235,14 +236,12 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         node.hit = 1;
       }
       if (node.kind == KindList) node.clip = true;
-      const auto index = static_cast<int32_t>(nodes.size());
       Node &parent = nodes[node.parent];
       if (parent.last_child >= 0)
         nodes[parent.last_child].next_sibling = index;
       else
         parent.first_child = index;
       parent.last_child = index;
-      nodes.push_back(node);
       stack.push_back(index);
       continue;
     }
@@ -386,7 +385,10 @@ void Engine::intrinsic_width(Node &node) {
       const std::string_view para = rest.substr(0, nl);
       const ShapedLine &shaped = shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, node.tracking == 0, node.tracking * dpr});
       content = std::max(content, shaped.total_advance / dpr);
-      if (nl == std::string_view::npos) break;
+      if (nl == std::string_view::npos) {
+        if (rest.size() == node.text.size()) node.shaped = &shaped;
+        break;
+      }
       rest.remove_prefix(nl + 1);
     }
   } else {
@@ -463,7 +465,7 @@ void Engine::wrap(Node &node, float inner_width) {
   for (;;) {
     const size_t nl = rest.find('\n');
     const std::string_view para = rest.substr(0, nl);
-    const ShapedLine &shaped = shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, node.tracking == 0, node.tracking * dpr});
+    const ShapedLine &shaped = node.shaped ? *node.shaped : shaper.shape_line_single(para, {}, {node.font, 0xffffffffu, node.tracking == 0, node.tracking * dpr});
     const auto count = static_cast<uint32_t>(shaped.glyphs.size());
     const uint32_t para_end = para_byte + static_cast<uint32_t>(para.size());
 
@@ -1141,12 +1143,7 @@ IRect Engine::swap_and_damage() {
     }
     damage = intersect(damage, full);
   }
-  previous.instances.assign(frame.instances.begin(), frame.instances.end());
-  previous.batches.assign(frame.batches.begin(), frame.batches.end());
-  previous.shaders = frame.shaders;
-  previous.width = frame.width;
-  previous.height = frame.height;
-  previous.clear = frame.clear;
+  std::swap(frame, previous);
   return damage;
 }
 

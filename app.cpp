@@ -1397,7 +1397,7 @@ struct qui_app {
     if (!shot_path.empty()) {
       backend->read_pixels(capture);
       if (write_png(shot_path, capture.data(), pixel_w, pixel_h))
-        std::fprintf(stderr, "qui: wrote %s (%dx%d, %zu nodes, %zu draw instances)\n", shot_path.c_str(), pixel_w, pixel_h, engine.nodes.size() - 1, engine.frame.instances.size());
+        std::fprintf(stderr, "qui: wrote %s (%dx%d, %zu nodes, %zu draw instances)\n", shot_path.c_str(), pixel_w, pixel_h, engine.nodes.size() - 1, engine.previous.instances.size());
     }
     if (!tree_path.empty()) std::ofstream(tree_path) << engine.tree_json();
     if (!wire_path.empty()) std::ofstream(wire_path, std::ios::binary).write(reinterpret_cast<const char *>(last_wire.data()), static_cast<std::streamsize>(last_wire.size()));

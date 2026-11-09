@@ -68,6 +68,9 @@ struct Node {
   float iw = 0, ih = 0, x = 0, y = 0, w = 0, h = 0;
   uint32_t line_first = 0, line_count = 0;
   FontInstanceId font = 0;
+  // Set by the width pass for text with a single paragraph, so wrapping does
+  // not look the same line up again.
+  const ShapedLine *shaped = nullptr;
 };
 
 enum InstanceFlag : uint32_t {
