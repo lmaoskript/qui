@@ -21,6 +21,7 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `MinW`, `MaxW`, `MinH`, `MaxH`, `Gap`, `Radius`, `Opacity`, `FontSize`, `Fps` | `f32` |
 | `Pad` | `top:f32 right:f32 bottom:f32 left:f32` |
 | `Align`, `Justify`, `Hit`, `Role`, `Weight` | `u8` |
+| `Gestures` | `u8` mask of `PanX`, `PanY`, `Pinch` and `TouchOnly` |
 | `Multiline` | `u8`, 1 for Enter inserting a newline, 2 for Enter submitting |
 | `Focus` | `u8`, 1 to focus on first appearance, 2 to focus now |
 | `Pos` | `x:f32 y:f32` |
@@ -47,7 +48,7 @@ next one, so widget calls never cross into the engine.
 
 The header is 64 bytes: `magic:u32 capacity:u32 width:f32 height:f32 dpr:f32
 dt:f32 pointer_x:f32 pointer_y:f32 keys_offset:u32 keys_count:u32
-text_offset:u32 pointer_down:u32 engine_ms:f32` and 12 reserved bytes. It is followed by `capacity` slots of 48 bytes,
+text_offset:u32 pointer_down:u32 engine_ms:f32` and 12 reserved bytes. It is followed by `capacity` slots of 56 bytes,
 open-addressed with linear probing from `id & (capacity - 1)`. An empty slot has
 `id == 0`.
 
@@ -60,13 +61,29 @@ UTF-8 text of every edited `Input` and every failed `Shader`.
 | 8 | `flags:u32` |
 | 12 | `first:u32` |
 | 16 | `count:u32` |
-| 20 | reserved `u32` |
+| 20 | `scale:f32` |
 | 24 | `x:f32 y:f32 w:f32 h:f32` |
 | 40 | `dx:f32 dy:f32` |
+| 48 | `vx:f32 vy:f32` |
 
 `first` and `count` are the visible item range of a `List`. On an `Input` with
 `Changed` set they are the byte offset from `text_offset` and the length of its
 new value, and on a `Shader` with `ShaderError` set the same for its compile log.
+
+## Gestures
+
+Once a press moves past the slop (8 px for touch, 4 for a mouse), its dominant
+axis picks one owner. The backend walks from the innermost node under the press
+to the root and stops at the first that can take it: a node whose `Gestures` has
+that axis, or for touch on the vertical axis, a scroller that can still move
+that way. If none can, the press continues as a drag. Winning cancels the press,
+so no click follows.
+
+`dx dy` carry the movement since the last frame, also during `Pinching`, and `vx
+vy` the velocity in logical px per second during `Panning` and on `PanEnd`.
+`scale` is the factor since the last frame and is only set with `Pinching`. A
+touch held for 500 ms without moving sets `LongPressed` and `RightClicked` and
+cancels the click. `DoubleTapped` comes with the second `Clicked`.
 
 ## Text fields
 

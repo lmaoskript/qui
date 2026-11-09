@@ -18,6 +18,8 @@ Run these from the repo root.
 | Run an example natively | `go run ./examples/billing` |
 | Serve an example at `127.0.0.1:8080` | `go run ./examples/billing/serve` |
 | Production web bundle | `go run ./cmd/qui build ./examples/billing` |
+| Windows `.exe` | `go run ./cmd/qui build -target windows ./examples/billing` |
+| Android `.apk` | `go run ./cmd/qui build -target android ./examples/billing` |
 
 The examples are `showcase`, `landing` and `billing`. Native builds need Go 1.24+ and `sdl3 freetype2 harfbuzz fontconfig` through pkg-config. `sys/` also needs `gio-2.0 gio-unix-2.0 libpipewire-0.3`.
 
@@ -72,8 +74,16 @@ Browser:
 - `--screenshot` does not capture WebGL. Check shaders through compile errors or `readPixels`.
 - The screenshot fires on page load. To run a test script first, keep load pending with an `<img>` that your test server only answers once the script reports back.
 - Buttons respond to `el.click()`, not synthetic pointer events.
-- Only Firefox has been tested so far.
+- Firefox covers rendering. Touch was tested in Chromium, where CDP `Input.dispatchTouchEvent` produces real pointer events, `touch-action` and native scrolling.
 - Each `Shader` uses one WebGL2 context and browsers cap them, so keep a page to about 8.
+
+Windows and Android:
+
+- `qui build -target windows|android` downloads pinned toolchains and libraries into `~/.cache/qui`. `-arch` picks the architecture; Android needs `ANDROID_HOME`, or an SDK in `~/Android`. Bump `depsStamp` in `cmd/qui/native.go` to force a rebuild of the libraries.
+- Windows: `-console` keeps stdout, then run the `.exe` under Wine. Offscreen variables work there, with paths like `QUI_SHOT=Z:/tmp/a.png`. An empty prefix has no system fonts, so copy some into its `C:\windows\Fonts`. If Wine cannot find a GL pixel format, stderr says so and the app runs on the CPU renderer, where shaders paint only their `Bg`.
+- Android: drive the emulator with `adb shell input tap` or `input swipe`, capture with `adb exec-out screencap -p`, and read stderr through `adb logcat -s qui`.
+- Offscreen touch goes through `QUI_DRIVE` steps with a synthetic clock, so velocity, long press and fling are repeatable.
+- The emulator's GLES silently renders shaders with `const` global arrays as zeros and reports no error. Drop the `const`.
 
 ## Linux desktop code
 
@@ -84,7 +94,7 @@ Browser:
 
 The goal is to replace the UI layers of `../litecord`, `../velocityplayer` and `../velocitycode`. Take architecture from litecord's `src/ui` and the visual language from velocitycode. It has to stay light on VRAM and work on integrated GPUs and in software.
 
-Not built yet: Android, Windows, Vulkan, images and touch gestures.
+Not built yet: Vulkan and images.
 
 ## Conventions
 

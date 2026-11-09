@@ -85,11 +85,11 @@ A strict flexbox subset that maps directly to CSS.
 - `Gradient: qui.Gradient{From, To, Angle}` fills a box; on `TextStyle` it colors the letters across the text box (keep such text fit-width). Angles are CSS degrees. `Shadow: qui.BoxShadow{Color, Blur, Y}` paints outside the box, so a bright color with no `Y` is a glow. `TextStyle.Tracking` is letter spacing in px; large headings look best around `-0.04 * Size`.
 - `ScrollTo: &offset` sets a `Scroll` box's offset for that frame. Animate it yourself for smooth anchors, and stop sending it when done so the user can scroll. A zero-height `Hit` box inside the scroller reports its viewport-relative `Y` even offscreen, which gives you scroll position, reveal-on-scroll and scroll-spy. Web scrolling does not wake the loop, so run a ticker calling `ui.Wake()` for those.
 
-`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Role Label Key`
+`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Gestures Role Label Key`
 
 `TextStyle` fields, in order: `Size Bold Mono Ellipsis Color W Align Role Gradient Tracking`. Presets: `Body H1 H2 Small Code`.
 
-`Response` fields: `Found Hovered Pressed Clicked RightClicked Focused DragStart Dragging DragEnd Changed Submitted X Y W H DX DY First Count Error`
+`Response` fields: `Found Hovered Pressed Clicked RightClicked Focused DragStart Dragging DragEnd Changed Submitted LongPressed DoubleTapped PanStart Panning PanEnd Pinching X Y W H DX DY VX VY Scale Swipe First Count Error`
 
 Frame info: `Width Height Dpr Dt PointerX PointerY PointerDown`. `Stats()` gives `Nodes WireBytes EngineMs` for the last frame.
 
@@ -191,7 +191,38 @@ func main() {
 }
 ```
 
-`Src` is GLSL ES 3.00 without `#version` or `precision`, and must define `vec4 shade(vec2 uv)`, with uv in 0..1 from the top-left. `u_time` and `u_resolution` are already declared; declare your own uniforms. `Fps` repaints without running your loop. The CPU backend does not run shaders and paints `Bg` instead, so always set one. A shader that fails to compile also paints `Bg`, and `ui.Shader` returns the compiler log in `Response.Error`, with line numbers relative to `Src`.
+`Src` is GLSL ES 3.00 without `#version` or `precision`, and must define `vec4 shade(vec2 uv)`, with uv in 0..1 from the top-left. `u_time` and `u_resolution` are already declared; declare your own uniforms. `Fps` repaints without running your loop. The CPU backend does not run shaders and paints `Bg` instead, so always set one. A shader that fails to compile also paints `Bg`, and `ui.Shader` returns the compiler log in `Response.Error`, with line numbers relative to `Src`. Declare lookup tables as plain `float A[64]=float[64](...)`, not `const`, which renders as zeros on the Android emulator.
+
+## Gestures
+
+Touch taps, scrolling and flings work without any setup. For the rest, set `Gestures` on a box. It does not need `Hit`, and text under it stays selectable.
+
+```go
+r := ui.Row(qui.Style{Key: key, W: qui.Fill(), Gestures: qui.GesturePanX}, rowBody)
+if r.Panning || r.PanEnd {
+	offset += r.DX
+}
+if r.Swipe == qui.SwipeLeft {
+	archive(i)
+}
+```
+
+- `GesturePanX`, `GesturePanY`, `GesturePinch`; add `GestureTouchOnly` to ignore the mouse. Read `PanStart Panning PanEnd DX DY VX VY Swipe`, and `Pinching Scale`, where `zoom *= r.Scale` is always safe and `PointerX/Y` is the pinch center.
+- The innermost box that accepts the press's dominant axis wins, and a scroller that can still move counts on the vertical axis. A `Hit` box inside a drawer or scroller only gets touch `Dragging` if nothing claims the axis, so give sliders and reorder handles their own `Gestures`.
+- Any `Hit` box reports `DoubleTapped`, and `LongPressed` for touch. A long press also sets `RightClicked`, so one handler covers context menus.
+
+`Drawer` is a panel that slides over content. Keep the state in your app. A touch swipe on the content opens it; a swipe, a tap on the scrim or Escape (Back on Android) closes it. A mouse cannot swipe it, so also open it with a button.
+
+```go
+ui.Drawer(&a.nav, qui.DrawerOptions{Side: qui.SideLeft, Size: 280, Style: qui.Style{Bg: qui.Surface, Pad: qui.All(12)}}, a.content, a.menu)
+if ui.Button("Menu").Clicked {
+	a.nav.Open = true
+}
+```
+
+C++: `Style.gestures`, `Response.pan_end`, `ui.drawer(state, {.side = Side::Left}, content, panel)`.
+
+On Android, Back arrives as `KeyEscape`. If no call to `KeyPressed(KeyEscape)` returns true that frame, the app goes to the background, so only check it while you have something to close.
 
 ## Build
 
@@ -216,6 +247,8 @@ For production, install the CLI once with `go install ./cmd/qui` from the qui re
 - An `index.html` in the app folder replaces the generated page. The script tag is added for you; keep `html, body { height: 100%; margin: 0 }` in it.
 - `public/` in the app folder is copied into the output as is, for favicons, fonts and `robots.txt`.
 - The host must serve `.wasm` as `application/wasm`, and needs configuring to use the `.br` and `.gz` copies. Hashed files can be cached forever; `index.html` should not be.
+
+`qui build -target windows [folder]` makes one static `.exe`, and `-target android -id com.example.app [folder]` a debug-signed `.apk`, both from Linux. Output goes to `dist/<target>`; `-arch` picks `amd64` or `arm64`, and `-console` keeps a Windows console. Android needs a JDK and an SDK with the NDK in `ANDROID_HOME` or `~/Android`, and packages Go apps only. A plain `func main()` works unchanged. The safe area is applied for you, so `Width` and `Height` exclude system bars and the keyboard.
 
 On Linux, `SetAppID` must equal the app's `.desktop` basename or the compositor shows the wrong icon and name. `sys.Install` writes that file.
 
@@ -278,10 +311,10 @@ Any of the first three variables runs the app offscreen for a few frames and exi
 | `QUI_DPR=2` | Pixel ratio |
 | `QUI_BACKEND=cpu` or `gl` | Force a renderer |
 | `QUI_FRAMES=n` | Minimum frames before exiting |
-| `QUI_DRIVE='click:58,231;type:hello;key:ctrl+a'` | Scripted input, `;` separated, in logical pixels: `click:x,y`, `dblclick:x,y`, `rclick:x,y`, `drag:x0,y0,x1,y1`, `down:x,y`, `up:x,y`, `move:x,y`, `wheel:x,y,amount` (negative scrolls down), `type:text`, `key:shift+left`, `ime:text` |
+| `QUI_DRIVE='click:58,231;type:hello;key:ctrl+a'` | Scripted input, `;` separated, in logical pixels: `click:x,y`, `dblclick:x,y`, `rclick:x,y`, `drag:x0,y0,x1,y1`, `down:x,y`, `up:x,y`, `move:x,y`, `wheel:x,y,amount` (negative scrolls down), `type:text`, `key:shift+left`, `ime:text`. Touch: `tap:x,y`, `longpress:x,y`, `swipe:x0,y0,x1,y1,ms`, `pinch:x,y,spread0,spread1`, `touch:x,y`, `touchmove:x,y`, `touchup:x,y` |
 
 ## Not available yet
 
-Do not assume these exist: images, touch gestures, Android builds, Windows, right-to-left paragraphs (mixed text orders correctly, but the base direction is always left-to-right), global shortcuts. On the web, list spacers use the estimate, so the scrollbar can shift when real heights differ.
+Do not assume these exist: images, right-to-left paragraphs (mixed text orders correctly, but the base direction is always left-to-right), global shortcuts. On the web, list spacers use the estimate, so the scrollbar can shift when real heights differ.
 
 To add a node kind, op or token, edit `spec.txt` and run `go run ./tools/gen`; `docs/wire.md` documents the format.

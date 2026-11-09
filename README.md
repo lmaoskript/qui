@@ -82,6 +82,7 @@ Run them from the repo root:
 - **Virtual lists:** `List` builds only the visible rows, and row heights can vary.
 - **Shaders:** write one GLSL function and place it like any other box.
 - **Styling:** gradients on boxes and text, box shadows, letter spacing and four built-in themes.
+- **Gestures:** pan with axis arbitration against scrollers, fling scrolling, pinch, long press, double tap and a swipeable drawer.
 - **Renderers:** OpenGL ES 3.0 or desktop GL 3.3, with a CPU rasterizer as the fallback.
 - **Real DOM on the web:** actual buttons, inputs and headings, with roles and labels for screen readers.
 - **Linux desktop tools:** `qui/sys` handles `.desktop` install, background services, and screen and microphone capture with saved permissions.
@@ -92,9 +93,10 @@ Run them from the repo root:
 | --- | --- |
 | Linux native | Works |
 | Browser (Go wasm) | Works, tested in Firefox |
-| Windows, Android | Not built yet |
+| Windows | Works, tested under Wine |
+| Android | Works, tested on the x86_64 emulator; arm64 builds but has not been run |
 
-Also missing: images, touch gestures, right-to-left paragraph direction and global shortcuts.
+Also missing: images, right-to-left paragraph direction and global shortcuts. Android APKs are debug-signed, and `qui build` only packages Go apps for Android.
 
 ## Getting started
 
@@ -131,6 +133,17 @@ qui build ./myapp -title "My app" -bg "#000"
 ```
 
 That writes `myapp/dist` with a stripped wasm, one minified JS bundle, hashed filenames and `.br` and `.gz` copies. Add an `index.html` to your app folder to replace the generated page, and a `public/` folder for favicons and fonts. Your host must serve `.wasm` as `application/wasm`.
+
+### Ship to Windows and Android
+
+From Linux, with no system packages beyond Go and CMake:
+
+```sh
+qui build -target windows ./myapp
+qui build -target android -id com.example.myapp ./myapp
+```
+
+The first build downloads pinned toolchains and libraries into `~/.cache/qui`. Windows needs nothing else and produces one static `.exe`. Android also needs a JDK and the SDK and NDK, in `ANDROID_HOME` or `~/Android`, and produces a debug-signed `.apk`. Output goes to `myapp/dist/<target>`.
 
 ## How it works
 
