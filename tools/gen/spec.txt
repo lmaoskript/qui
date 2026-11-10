@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 26
+version 27
 
 kind Box 0
 kind Text 1
@@ -33,6 +33,7 @@ span Italic 4
 span Underline 8
 span Strike 16
 span Image 32
+span HoverUnderline 64
 
 align Start 0
 align Center 1

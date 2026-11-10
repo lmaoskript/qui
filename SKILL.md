@@ -236,7 +236,7 @@ r := ui.Rich(text, []qui.Span{
 if r.Clicked == "docs" { open() }
 ```
 
-One paragraph that wraps across spans. Offsets are UTF-8 byte offsets; spans are sorted and must not overlap, and gaps are plain text. Flags: `SpanBold SpanMono SpanItalic SpanUnderline SpanStrike` (italic is a synthetic slant of the regular or bold face). An inline image (a custom emoji) is a span whose bytes are `qui.ImagePlaceholder` with `Image: key` set to a loaded image (C++ `kImagePlaceholder`, `.image`); it takes about 1.5em of width and draws at line height. `Link` makes a span clickable and `Hovered`, `Clicked` and `RightClicked` name it, one frame late like any response. C++: `ui.rich(text, spans, style)` with `Span{.start, .end, .flags, .fg, .bg, .link}`. On the web it is real `<span>` and `<a>` elements.
+One paragraph that wraps across spans. Offsets are UTF-8 byte offsets; spans are sorted and must not overlap, and gaps are plain text. Flags: `SpanBold SpanMono SpanItalic SpanUnderline SpanStrike SpanHoverUnderline` (italic is a synthetic slant of the regular or bold face). An inline image (a custom emoji) is a span whose bytes are `qui.ImagePlaceholder` with `Image: key` set to a loaded image (C++ `kImagePlaceholder`, `.image`); it takes about 1.5em of width and draws at line height. `Link` makes a span clickable and `Hovered`, `Clicked` and `RightClicked` name it, one frame late like any response. C++: `ui.rich(text, spans, style)` with `Span{.start, .end, .flags, .fg, .bg, .link}`. On the web it is real `<span>` and `<a>` elements.
 
 ## Overlays
 

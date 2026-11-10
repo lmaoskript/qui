@@ -1188,6 +1188,7 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
         const SpanRef &span = spans[node.span_first + k];
         float lo, hi;
         if (!(span.flags & (SpanUnderline | SpanStrike | SpanImage)) && !span.id) continue;
+        const bool underlined = (span.flags & SpanUnderline) || ((span.flags & SpanHoverUnderline) && span.id && (span.id == ui.hovered || span.id == ui.pressed));
         if (!extent(span, lo, hi)) continue;
         if (span.flags & SpanImage) {
           const int size = static_cast<int>(std::round(line_height * 0.92f));
@@ -1203,7 +1204,7 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
           continue;
         }
         const uint32_t line_color = span.fg ? faded(span.fg) : color;
-        if (span.flags & SpanUnderline) add_rect(lo, std::round(y + (line_height - ink) / 2 + metrics->ascender + dpr), hi - lo, thickness, line_color, 0, 0, clip);
+        if (underlined) add_rect(lo, std::round(y + (line_height - ink) / 2 + metrics->ascender + dpr), hi - lo, thickness, line_color, 0, 0, clip);
         if (span.flags & SpanStrike) add_rect(lo, std::round(y + line_height * 0.52f), hi - lo, thickness, line_color, 0, 0, clip);
         if (span.id) {
           HitEntry hit;

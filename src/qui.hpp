@@ -127,7 +127,7 @@ struct Response {
 
 inline constexpr uint8_t FitCover = wire::FitCover, FitContain = wire::FitContain, FitStretch = wire::FitStretch;
 inline constexpr uint8_t SpanImage = wire::SpanImage;
-inline constexpr uint8_t SpanBold = wire::SpanBold, SpanMono = wire::SpanMono, SpanItalic = wire::SpanItalic, SpanUnderline = wire::SpanUnderline, SpanStrike = wire::SpanStrike;
+inline constexpr uint8_t SpanBold = wire::SpanBold, SpanMono = wire::SpanMono, SpanItalic = wire::SpanItalic, SpanUnderline = wire::SpanUnderline, SpanStrike = wire::SpanStrike, SpanHoverUnderline = wire::SpanHoverUnderline;
 
 struct Span {
   uint32_t start = 0, end = 0;

@@ -68,6 +68,7 @@ const baseCss = `
 .qui-root [data-qh]:not(.qui-input) { -webkit-touch-callout: none; touch-action: pan-y; }
 .qui-root button, .qui-root [role=button], .qui-root [role=switch], .qui-root [role=slider], .qui-root [role^=menu] { user-select: none; -webkit-user-select: none; }
 @media (hover: hover) { .qui-root .qui-hoverbg:hover { background: var(--qui-hover) !important; } }
+.qui-root .qui-hu:hover, .qui-root .qui-hu:active { text-decoration: underline; }
 @media (pointer: coarse) { .qui-root [data-qh]:not(.qui-input) { user-select: none; -webkit-user-select: none; } }
 .qui-root .qui-select { user-select: text; -webkit-user-select: text; }
 .qui-root .qui-noselect { user-select: none; -webkit-user-select: none; }
@@ -1001,6 +1002,7 @@ class Patcher {
       if (span.flags & 4) style += "font-style:italic;";
       const lines = [(span.flags & 8) && "underline", (span.flags & 16) && "line-through"].filter(Boolean);
       if (lines.length) style += `text-decoration:${lines.join(" ")};`;
+      if (span.flags & 64) child.classList.add("qui-hu");
       if (span.fg) style += `color:${color(span.fg)};`;
       if (span.bg) style += `background:${color(span.bg)};border-radius:4px;padding:0 2px;`;
       child.style.cssText = style;
