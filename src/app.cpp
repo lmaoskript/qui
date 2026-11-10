@@ -4,6 +4,9 @@
 #include "qui_c.h"
 
 #include <SDL3/SDL.h>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 #include <algorithm>
 #include <deque>
@@ -268,6 +271,7 @@ struct qui_app {
   double long_press_at = kNever, press_show_at = 0, last_tap_at = -1, fling_next = 0, fling_last = 0, drive_clock = 0;
   double smooth_next = 0, smooth_last = 0;
   double ease_next = 0;
+  double trimmed_at = 0;
   uint64_t smooth_id = 0;
   float smooth_left = 0;
   bool smooth_wheel = false;
@@ -1405,6 +1409,16 @@ struct qui_app {
     SDL_UpdateWindowSurfaceRects(window, &rect, 1);
   }
 
+  // Before an idle wait, hands freed heap back to the system, at most every
+  // five seconds.
+  void release_idle_memory() {
+#if defined(__GLIBC__)
+    if (now() - trimmed_at < 5) return;
+    trimmed_at = now();
+    malloc_trim(0);
+#endif
+  }
+
   bool wait() {
     for (;;) {
       SDL_Event event;
@@ -1425,6 +1439,7 @@ struct qui_app {
       if (smooth_id) deadline = std::min(deadline, smooth_next);
       if (ease_next > 0) deadline = std::min(deadline, ease_next);
       bool got = false;
+      if (deadline - now() > 0.25) release_idle_memory();
       if (std::isfinite(deadline)) {
         got = SDL_WaitEventTimeout(&event, static_cast<Sint32>(std::ceil(std::max(0.0, (deadline - now()) * 1000.0))));
       } else {
