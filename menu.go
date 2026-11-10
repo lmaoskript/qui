@@ -57,6 +57,9 @@ func (u *Ui) Menu(m *Menu, items []MenuItem, panel ...Style) int {
 		s.W = Fill()
 		if s.Class == "" {
 			sheetDefaults(&s)
+			if s.Pad == (Edges{}) {
+				s.Pad = All(8)
+			}
 		}
 	} else if s.Class == "" {
 		menuDefaults(&s)

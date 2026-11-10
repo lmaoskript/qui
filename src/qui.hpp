@@ -566,7 +566,8 @@ class Ui {
 
   // A panel that slides up from the bottom edge over a scrim, the phone form of
   // modal. Returns true when the scrim is tapped, the panel is swiped down or
-  // Escape is pressed. Without a klass, unset panel fields get a full-width card.
+  // Escape is pressed. Without a klass, unset panel fields other than pad get a
+  // full-width card.
   template <class F>
   bool sheet(std::string_view key, Style panel, F &&body) {
     bool dismissed = false;
@@ -596,7 +597,6 @@ class Ui {
     if (!s.border) s.border = Line;
     if (!s.border_w) s.border_w = 1;
     if (!s.radius) s.radius = 16;
-    if (!s.pad.top && !s.pad.right && !s.pad.bottom && !s.pad.left) s.pad = 8;
   }
 
   // Shows `text` beside the pointer while `show` is true, usually a response's hovered.
@@ -680,6 +680,7 @@ class Ui {
     if (as_sheet) {
       s.w = fill();
       if (s.klass.empty()) sheet_defaults(s);
+      if (s.klass.empty() && !s.pad.top && !s.pad.right && !s.pad.bottom && !s.pad.left) s.pad = 8;
     } else if (s.klass.empty()) {
       if (s.w.mode == wire::SizeFit && s.w.value == 0) s.w = px(224);
       if (!s.bg) s.bg = Raised;

@@ -44,7 +44,7 @@ func (u *Ui) Modal(key string, panel Style, body func()) bool {
 // Sheet shows body in a panel that slides up from the bottom edge over a
 // dimming scrim, the phone form of Modal. It returns true when the user tapped
 // the scrim, swiped the panel down or pressed Escape. Without a Class, unset
-// panel fields get a full-width raised card.
+// panel fields other than Pad get a full-width raised card.
 func (u *Ui) Sheet(key string, panel Style, body func()) bool {
 	dismissed := false
 	u.Stack(Style{Key: key, Absolute: true, W: Fill(), H: Fill(), Z: overlayZ}, func() {
@@ -91,9 +91,6 @@ func sheetDefaults(s *Style) {
 	}
 	if s.Radius == 0 {
 		s.Radius = 16
-	}
-	if s.Pad == (Edges{}) {
-		s.Pad = All(8)
 	}
 }
 
