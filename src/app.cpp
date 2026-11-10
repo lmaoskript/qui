@@ -31,7 +31,7 @@ using namespace qui;
 
 constexpr float kDragThreshold = 4, kTouchSlop = 8;
 constexpr size_t kResultsHeader = 64, kResultsSlot = 56;
-constexpr float kWheelPixels = 48, kSmoothRate = 16;
+constexpr float kWheelPixels = 110, kSmoothRate = 13, kSmoothCap = 2600;
 constexpr double kCaretBlink = 0.53;
 constexpr double kLongPress = 0.5, kDoubleTap = 0.3, kPressDelay = 0.08, kVelocityWindow = 0.1, kFlingStep = 1.0 / 60.0;
 constexpr float kDoubleTapSlop = 24, kFlingMin = 120, kFlingStop = 24, kFlingDecay = 3, kFlingMax = 6000;
@@ -786,7 +786,7 @@ struct qui_app {
     if (id != smooth_id || (smooth_left > 0) != (delta > 0)) smooth_left = 0;
     if (!smooth_id || id != smooth_id) smooth_last = smooth_next = clock();
     smooth_id = id;
-    smooth_left += delta;
+    smooth_left = std::clamp(smooth_left + delta, -kSmoothCap, kSmoothCap);
     dirty = true;
   }
 
