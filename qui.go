@@ -68,6 +68,9 @@ type Style struct {
 	// position: fixed does. Fill sizes take the window's size, and the parent's
 	// clip and scroll do not apply.
 	Fixed bool
+	// NoScrollbar scrolls without drawing a scrollbar; the wheel, touch and
+	// keys still work.
+	NoScrollbar bool
 }
 
 type TextStyle struct {
@@ -607,6 +610,9 @@ func (u *Ui) emitStyle(s *Style) {
 	}
 	if s.Fixed {
 		u.u8(opFixed)
+	}
+	if s.NoScrollbar {
+		u.u8(opNoScrollbar)
 	}
 	if s.Z != 0 {
 		u.u32Op(opZ, uint32(s.Z))

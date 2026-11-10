@@ -378,6 +378,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpJump: node.jump = in.read<uint32_t>(); node.has_jump = true; break;
       case OpGlide: node.glide = true; break;
       case OpDrag: node.drag = true; break;
+      case OpNoScrollbar: node.no_scrollbar = true; break;
       case OpFixed:
         node.fixed = true;
         node.has_pos = true;
@@ -1406,7 +1407,9 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
   scroll_parent_ = outer_scroll;
   hit_parent_ = outer_hit;
 
-  if (node.kind == KindList) {
+  if (node.no_scrollbar) {
+    // scrolls without a bar
+  } else if (node.kind == KindList) {
     const auto it = lists.find(node.id);
     if (it != lists.end() && it->second.count) {
       const ListState &state = it->second;

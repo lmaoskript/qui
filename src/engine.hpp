@@ -82,7 +82,7 @@ struct Node {
   uint32_t gradient_from = 0, gradient_to = 0, shadow = 0;
   float gradient_angle = 0, shadow_blur = 0, shadow_y = 0, tracking = 0, scroll_to = 0;
   uint32_t jump = 0;
-  bool has_jump = false, glide = false, drag = false, fixed = false;
+  bool has_jump = false, glide = false, drag = false, fixed = false, no_scrollbar = false;
   std::string_view text, label, src, placeholder;
   uint32_t count = 0;
   float est = 0;

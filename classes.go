@@ -147,6 +147,7 @@ func (s Style) fill(b Style) Style {
 	s.NoSelect = s.NoSelect || b.NoSelect
 	s.Drag = s.Drag || b.Drag
 	s.Fixed = s.Fixed || b.Fixed
+	s.NoScrollbar = s.NoScrollbar || b.NoScrollbar
 	s.Wrap = s.Wrap || b.Wrap
 	if s.Gestures == 0 {
 		s.Gestures = b.Gestures
