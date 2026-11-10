@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 21
+const wireVersion = 23
 
 const (
 	opEnd            = 0
@@ -63,6 +63,8 @@ const (
 	opSvgData        = 57
 	opBare           = 58
 	opNoSelect       = 59
+	opEase           = 60
+	opHoverBg        = 61
 )
 
 const (

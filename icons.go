@@ -96,7 +96,7 @@ func (u *Ui) IconButton(svg Svg, label string, s Style) Response {
 	if s.W.mode == sizePx && s.W.value < iconSize+8 {
 		size = max(s.W.value-8, 8)
 	}
-	return u.Row(s, func() { u.Icon(svg, Style{W: Px(size), H: Px(size), Fg: fg}) })
+	return u.Row(s, func() { u.Icon(svg, Style{W: Px(size), H: Px(size), Fg: fg, Ease: s.Ease}) })
 }
 
 // peek returns last frame's Response for the keyed node about to be opened in

@@ -74,6 +74,12 @@ struct Style {
   // Keeps the mouse from selecting text in this subtree; select on a
   // descendant turns it back on there.
   bool no_select = false;
+  // Animates changes to bg, fg, border, radius, opacity and the hover tint of
+  // buttons over this many milliseconds.
+  float ease = 0;
+  // Replaces bg while the pointer is over the box or anything in it, without
+  // waiting a frame.
+  Color hover_bg = 0;
 };
 
 struct TextStyle {
@@ -250,6 +256,8 @@ class Ui {
     if (!res_) return false;
     started_ = true;
     nodes_ = 0;
+    ++frame_count_;
+    std::erase_if(tweens_, [&](const auto &kv) { return kv.second.seen + 1 < frame_count_; });
     buf_.clear();
     stack_.clear();
     stack_.push_back({kSeed, 0});
@@ -279,8 +287,28 @@ class Ui {
   std::string selected_text() const { return qui_selected_text(app_); }
   // Eases mouse wheel steps. Browsers smooth the wheel themselves.
   void set_smooth_scroll(bool on) { qui_set_smooth_scroll(app_, on ? 1 : 0); }
-  // Makes drawers snap instead of sliding.
+  // Makes drawers, ease and tween snap instead of animating.
   void set_reduce_motion(bool on) { reduce_motion_ = on; }
+
+  // Eases toward target over ms milliseconds and returns this frame's value,
+  // for what Style::ease does not animate, such as a size or a position. Call
+  // it once per frame per key. The first call, and a call after a frame
+  // without one, returns target.
+  float tween(std::string_view key, float target, float ms) {
+    const uint64_t id = mix(stack_.back().id, key.data(), key.size());
+    auto [it, fresh] = tweens_.try_emplace(id);
+    Tween &t = it->second;
+    if (fresh || t.seen + 1 < frame_count_ || reduce_motion_ || ms <= 0) {
+      t = {target, target, 0, 0, 0};
+    } else if (t.to != target) {
+      t = {t.value(), target, 0, ms / 1000, 0};
+    } else {
+      t.elapsed += std::min(dt(), 1.f / 30);
+    }
+    t.seen = frame_count_;
+    if (t.elapsed < t.duration) wake();
+    return t.value();
+  }
   void set_theme(uint8_t theme) { theme_ = theme; }
 
   constexpr static Color token(uint8_t id) { return Color(id) << 24; }
@@ -456,7 +484,7 @@ class Ui {
     style.fg = 0;
     float size = kIconSize;
     if (style.w.mode == wire::SizePx && style.w.value < kIconSize + 8) size = std::max(style.w.value - 8, 8.f);
-    return row(style, [&] { icon(svg, {.w = px(size), .h = px(size), .fg = fg}); });
+    return row(style, [&] { icon(svg, {.w = px(size), .h = px(size), .fg = fg, .ease = style.ease}); });
   }
 
   // Overlays float above the window. Call them from the root container, after the
@@ -989,6 +1017,8 @@ class Ui {
     }
     if (!s.radius) s.radius = b.radius;
     if (!s.opacity) s.opacity = b.opacity;
+    if (!s.ease) s.ease = b.ease;
+    if (!s.hover_bg) s.hover_bg = b.hover_bg;
     if (!s.gradient.from && !s.gradient.to) s.gradient = b.gradient;
     if (!s.shadow.color) s.shadow = b.shadow;
     s.clip |= b.clip;
@@ -1050,6 +1080,8 @@ class Ui {
     if (s.hit) u8_op(wire::OpHit, 1);
     if (s.select) u8(wire::OpSelect);
     if (s.no_select) u8(wire::OpNoSelect);
+    if (s.ease && !reduce_motion_) f32_op(wire::OpEase, s.ease);
+    if (s.hover_bg) u32_op(wire::OpHoverBg, s.hover_bg);
     if (s.wrap) u8(wire::OpWrap);
     if (s.gestures) u8_op(wire::OpGestures, s.gestures);
     if (s.role) u8_op(wire::OpRole, s.role);
@@ -1125,10 +1157,21 @@ class Ui {
     }
   }
 
+  struct Tween {
+    float from = 0, to = 0, elapsed = 0, duration = 0;
+    uint64_t seen = 0;
+    float value() const {
+      const float k = duration > 0 ? std::min(elapsed / duration, 1.f) : 1.f;
+      return from + (to - from) * (1 - (1 - k) * (1 - k) * (1 - k));
+    }
+  };
+
   qui_app *app_;
   const uint8_t *res_ = nullptr;
   bool started_ = false;
   bool reduce_motion_ = false;
+  uint64_t frame_count_ = 0;
+  std::unordered_map<uint64_t, Tween> tweens_;
   uint8_t theme_ = 0;
   size_t image_at_ = 0;
   std::vector<uint8_t> pending_images_;

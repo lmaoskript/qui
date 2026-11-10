@@ -267,6 +267,7 @@ struct qui_app {
   float vel_x = 0, vel_y = 0, pinch_scale = 1, pinch_spread = 0, last_tap_x = 0, last_tap_y = 0, fling_v = 0;
   double long_press_at = kNever, press_show_at = 0, last_tap_at = -1, fling_next = 0, fling_last = 0, drive_clock = 0;
   double smooth_next = 0, smooth_last = 0;
+  double ease_next = 0;
   uint64_t smooth_id = 0;
   float smooth_left = 0;
   bool smooth_wheel = false;
@@ -940,6 +941,10 @@ struct qui_app {
       smooth_last = t;
       smooth_next = t + (cpu ? kFlingStep : 0);
     }
+    if (ease_next > 0 && t >= ease_next) {
+      ease_next = 0;
+      dirty = true;
+    }
   }
 
   bool note_tap(double time, uint64_t id) {
@@ -1418,6 +1423,7 @@ struct qui_app {
       if (press_show_at > 0) deadline = std::min(deadline, press_show_at);
       if (fling_id) deadline = std::min(deadline, fling_next);
       if (smooth_id) deadline = std::min(deadline, smooth_next);
+      if (ease_next > 0) deadline = std::min(deadline, ease_next);
       bool got = false;
       if (std::isfinite(deadline)) {
         got = SDL_WaitEventTimeout(&event, static_cast<Sint32>(std::ceil(std::max(0.0, (deadline - now()) * 1000.0))));
@@ -1584,7 +1590,9 @@ struct qui_app {
       engine.focus_request = 0;
     }
     engine.ui = {shown_hovered(), shown_pressed(), focused, focus_ring, headless || caret_on, scrollbar_dragged ? scrollbar_dragged : scrollbar_hovered};
+    engine.time = clock();
     engine.paint();
+    ease_next = engine.easing ? clock() + (cpu ? kFlingStep : 0.004) : 0;
     if (engine.selection.empty()) engine.selection_cache.clear();
     else engine.selection_cache = engine.selected_text();
     if (focused && std::none_of(engine.hits.begin(), engine.hits.end(), [&](const HitEntry &e) { return e.id == focused; })) set_focus(0, false);

@@ -125,11 +125,15 @@ func (s Style) fill(b Style) Style {
 	if s.Fg == 0 {
 		s.Fg = b.Fg
 	}
+	if s.HoverBg == 0 {
+		s.HoverBg = b.HoverBg
+	}
 	if s.Border == 0 {
 		s.Border, s.BorderW = b.Border, b.BorderW
 	}
 	setF(&s.Radius, b.Radius)
 	setF(&s.Opacity, b.Opacity)
+	setF(&s.Ease, b.Ease)
 	if s.Gradient == (Gradient{}) {
 		s.Gradient = b.Gradient
 	}

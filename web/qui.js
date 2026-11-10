@@ -67,6 +67,7 @@ const baseCss = `
 .qui-root [data-qh], .qui-root [data-qp], .qui-list, .qui-text { pointer-events: auto; }
 .qui-root [data-qh]:not(.qui-input) { -webkit-touch-callout: none; touch-action: pan-y; }
 .qui-root button, .qui-root [role=button], .qui-root [role=switch], .qui-root [role=slider], .qui-root [role^=menu] { user-select: none; -webkit-user-select: none; }
+@media (hover: hover) { .qui-root .qui-hoverbg:hover { background: var(--qui-hover) !important; } }
 @media (pointer: coarse) { .qui-root [data-qh]:not(.qui-input) { user-select: none; -webkit-user-select: none; } }
 .qui-root .qui-select { user-select: text; -webkit-user-select: text; }
 .qui-root .qui-noselect { user-select: none; -webkit-user-select: none; }
@@ -192,6 +193,8 @@ function decode(bytes, length) {
       case Op.Clip: node.clip = true; break;
       case Op.Select: node.select = true; break;
       case Op.NoSelect: node.noSelect = true; break;
+      case Op.Ease: node.ease = r.f32(); break;
+      case Op.HoverBg: node.hoverBg = r.u32(); break;
       case Op.Wrap: node.wrap = true; break;
       case Op.Value: node.value = r.f32(); break;
       case Op.Scroll: node.scroll = true; break;
@@ -330,6 +333,8 @@ function css(node, parent) {
   if (node.border) s += `border:${node.borderW}px solid ${color(node.border)};`;
   if (node.radius) s += `border-radius:${node.radius}px;`;
   if (node.opacity) s += `opacity:${node.opacity};`;
+  if (node.hoverBg) s += `--qui-hover:${color(node.hoverBg)};`;
+  if (node.ease) s += `transition:${["background-color", "color", "border-color", "border-radius", "opacity", "box-shadow"].map((p) => `${p} ${node.ease}ms cubic-bezier(.33,1,.68,1)`).join(",")};`;
   if (node.clip) s += "overflow:hidden;";
   if (node.scroll) s += "overflow-y:auto;pointer-events:auto;";
   if (node.z) s += `z-index:${node.z};`;
@@ -1050,6 +1055,7 @@ class Patcher {
       }
       el.classList.toggle("qui-select", !!node.select);
       el.classList.toggle("qui-noselect", !!node.noSelect);
+      el.classList.toggle("qui-hoverbg", !!node.hoverBg);
       if (node.hit || node.kind === Kind.Button || node.kind === Kind.Input) el.setAttribute("data-qh", "");
       else el.removeAttribute("data-qh");
       el.__gestures = node.gestures ?? 0;

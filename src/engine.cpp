@@ -337,6 +337,8 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpClip: node.clip = true; break;
       case OpSelect: node.select_root = stack.back(); break;
       case OpNoSelect: node.select_root = -1; break;
+      case OpEase: node.ease = in.read<float>(); break;
+      case OpHoverBg: node.hover_bg = in.read<uint32_t>(); break;
       case OpWrap: node.wrap = true; break;
       case OpValue: in.read<float>(); break;
       case OpScroll: node.scroll = node.clip = true; break;
@@ -976,6 +978,7 @@ void Engine::prune() {
   std::erase_if(lists, [&](const auto &kv) { return stale(kv.second.frame); });
   std::erase_if(scrolls, [&](const auto &kv) { return stale(kv.second.frame); });
   std::erase_if(inputs, [&](const auto &kv) { return stale(kv.second.frame); });
+  std::erase_if(eases_, [&](const auto &kv) { return frame_number - kv.second.frame > 1; });
 }
 
 void Engine::add_instance(const Instance &instance, int page, IRect clip) {
@@ -1173,9 +1176,51 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
   }
 }
 
+Engine::EaseValues Engine::ease(const Node &node, const EaseValues &target) {
+  const auto [it, fresh] = eases_.try_emplace(node.id);
+  EaseState &e = it->second;
+  const auto at = [&](float &k) {
+    k = e.duration > 0 ? std::clamp(static_cast<float>((time - e.start) / e.duration), 0.f, 1.f) : 1.f;
+    const float s = 1 - (1 - k) * (1 - k) * (1 - k);
+    const auto mix = [&](uint32_t a, uint32_t b) {
+      const uint32_t c = mix_colors(a, b, s);
+      return (c & 0xffu) ? c : 0u;
+    };
+    return EaseValues{mix(e.from.bg, e.to.bg), mix(e.from.border, e.to.border), mix(e.from.fg, e.to.fg), mix(e.from.tint, e.to.tint),
+                      e.from.radius + (e.to.radius - e.from.radius) * s, e.from.opacity + (e.to.opacity - e.from.opacity) * s};
+  };
+  float k = 1;
+  // A node missing from the last frame, like a list row scrolled back in,
+  // starts where it is instead of animating from a stale value.
+  if (fresh || frame_number - e.frame > 1) {
+    e.from = e.to = target;
+    e.duration = 0;
+  } else if (!(target == e.to)) {
+    e.from = at(k);
+    e.to = target;
+    e.start = time;
+    e.duration = node.ease / 1000.0;
+  }
+  e.frame = frame_number;
+  const EaseValues now = at(k);
+  if (k < 1) easing = true;
+  return now;
+}
+
 void Engine::paint_node(int index, float opacity, IRect clip) {
-  const Node &node = nodes[static_cast<size_t>(index)];
+  Node &node = nodes[static_cast<size_t>(index)];
   const uint64_t hovered = ui.hovered, pressed = ui.pressed;
+  uint32_t tint = (node.kind == KindButton || node.role == RoleButton) && (node.id == hovered || node.id == pressed) ? resolve(node.id == pressed ? Active : Hover) : 0;
+  if (node.hover_bg && std::find(hover_chain_.begin(), hover_chain_.end(), node.id) != hover_chain_.end()) node.bg = node.hover_bg;
+  if (node.ease > 0 && index != 0) {
+    const EaseValues now = ease(node, {resolve(node.bg), resolve(node.border), resolve(node.fg), tint, node.radius, node.opacity});
+    node.bg = now.bg;
+    node.border = now.border;
+    node.fg = now.fg;
+    node.radius = now.radius;
+    node.opacity = now.opacity;
+    tint = now.tint;
+  }
   const float alpha = opacity * node.opacity;
 
   const auto snap = [&](float v) { return std::round(v * dpr); };
@@ -1257,10 +1302,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     add_rect(x0, y0, w, h, fade(resolve(node.bg)), radius, 0, clip);
   }
 
-  if ((node.kind == KindButton || node.role == RoleButton) && (node.id == hovered || node.id == pressed)) {
-    const uint32_t tint = resolve(node.id == pressed ? Active : Hover);
-    add_rect(x0, y0, w, h, fade(tint), radius, 0, clip);
-  }
+  if (tint) add_rect(x0, y0, w, h, fade(tint), radius, 0, clip);
   if (node.border && node.border_w > 0) {
     const uint32_t border = node.kind == KindInput && node.id == ui.focused ? static_cast<uint32_t>(Accent) : node.border;
     add_rect(x0, y0, w, h, fade(resolve(border)), radius, std::max(1.f, std::round(node.border_w * dpr)), clip);
@@ -1352,11 +1394,18 @@ void Engine::paint_children(const Node &node, float opacity, IRect clip) {
 }
 
 void Engine::paint() {
+  easing = false;
   scroll_parent_ = hit_parent_ = -1;
   round_clip_ = {};
   frame.instances.clear();
   frame.batches.clear();
   frame.shaders.clear();
+  hover_chain_.clear();
+  for (size_t i = 0; i < hits.size(); ++i) {
+    if (hits[i].id != ui.hovered) continue;
+    for (int32_t at = static_cast<int32_t>(i); at >= 0; at = hits[static_cast<size_t>(at)].parent) hover_chain_.push_back(hits[static_cast<size_t>(at)].id);
+    break;
+  }
   hits.clear();
   select_texts_.clear();
   resolve_selection();

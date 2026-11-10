@@ -87,7 +87,7 @@ A strict flexbox subset that maps directly to CSS.
 - Text is mouse-selectable everywhere, as in a browser (drag, double-click a word, triple-click a text, Ctrl+C copies), except in buttons, inputs, menus, switches and sliders; a drag that selects text does not click or drag the `Hit` box under it. `NoSelect: true` turns selection off for a subtree (navigation, lists you click through, draggable tiles) and `Select: true` turns it back on below and keeps a selection that starts there inside it; modals, popups and drawers do that already. `ui.SelectedText()` (C++ `selected_text()`) returns the selection for a Copy menu item. Touch input does not select.
 - `ScrollTo: &offset` sets a `Scroll` box's offset for that frame. Animate it yourself for smooth anchors, and stop sending it when done so the user can scroll. A zero-height `Hit` box inside the scroller reports its viewport-relative `Y` even offscreen, which gives you scroll position, reveal-on-scroll and scroll-spy. Web scrolling does not wake the loop, so run a ticker calling `ui.Wake()` for those.
 
-`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Gestures Role Label Key Class Select Wrap NoSelect` (C++ `select`, `wrap`, `no_select` come last)
+`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Gestures Role Label Key Class Select Wrap NoSelect Ease HoverBg` (C++ `select`, `wrap`, `no_select`, `ease`, `hover_bg` come last)
 
 `TextStyle` fields, in order: `Size Bold Mono Ellipsis Color W Align Role Gradient Tracking Class`. Presets: `Body H1 H2 Small Code`.
 
@@ -256,7 +256,9 @@ ui.Tooltip(row.Hovered, "Copy link")
 
 `SetClipboard(text)` (C++ `set_clipboard`) puts text on the system clipboard, which a context menu's "Copy" needs; browsers only allow it inside a click.
 
-`SetSmoothScroll(true)` eases mouse wheel steps (native; browsers smooth the wheel themselves) and `SetReduceMotion(true)` makes drawers snap. C++: `set_smooth_scroll`, `set_reduce_motion`.
+`SetSmoothScroll(true)` eases mouse wheel steps (native; browsers smooth the wheel themselves) and `SetReduceMotion(true)` makes drawers, `Ease` and `Tween` snap. C++: `set_smooth_scroll`, `set_reduce_motion`.
+
+Motion: `Ease: 150` on a box animates its `Bg`, `Fg`, `Border`, `Radius`, `Opacity` and button hover tint over 150ms when they change; give it a stable `Key`. `HoverBg` replaces `Bg` while the pointer is over the box or its children, with no frame of delay, so a row stays lit over its own buttons. For anything else, `v := ui.Tween(key, target, ms)` returns an eased value each frame (once per key per frame) and keeps frames coming until it arrives, e.g. a growing `H: qui.Px(v)`. C++: `.ease`, `.hover_bg`, `ui.tween(key, target, ms)`.
 
 `Modal` centers a panel over a scrim (capped to the window minus 16px a side), `Popup` places a panel at window coordinates (take them from `PointerX/PointerY` on a right click) and keeps it on screen when it has a `W`, and `Tooltip` follows the pointer. C++: `ui.modal(key, style, body)`, `ui.popup(key, x, y, style, body)`, `ui.tooltip(show, text)`.
 

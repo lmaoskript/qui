@@ -92,6 +92,8 @@ struct Node {
   uint8_t fit = 0;
   uint32_t span_first = 0, span_count = 0, prepend = 0;
   int32_t select_root = -1;
+  float ease = 0;
+  uint32_t hover_bg = 0;
 
   float iw = 0, ih = 0, x = 0, y = 0, w = 0, h = 0;
   uint32_t line_first = 0, line_count = 0;
@@ -338,6 +340,9 @@ class Engine {
   float dpr = 1;
   uint64_t frame_number = 0;
   bool wants_another_frame = false;
+  // The clock for eases, in seconds; `easing` is set by paint while one runs.
+  double time = 0;
+  bool easing = false;
 
   IRect swap_and_damage();
   std::string tree_json() const;
@@ -375,6 +380,20 @@ class Engine {
   void sync_input(Node &node, int index);
   void apply_input_view(Node &node, const InputState &state);
   float input_text_top(const Node &node, const InputState &state) const;
+  struct EaseValues {
+    uint32_t bg = 0, border = 0, fg = 0, tint = 0;
+    float radius = 0, opacity = 1;
+    bool operator==(const EaseValues &) const = default;
+  };
+  struct EaseState {
+    EaseValues from, to;
+    double start = 0, duration = 0;
+    uint64_t frame = 0;
+  };
+  std::unordered_map<uint64_t, EaseState> eases_;
+  // The hovered hit and the hits around it, from the last paint.
+  std::vector<uint64_t> hover_chain_;
+  EaseValues ease(const Node &node, const EaseValues &target);
   void paint_node(int index, float opacity, IRect clip);
   void paint_children(const Node &node, float opacity, IRect clip);
   void paint_text(const Node &node, float opacity, IRect clip, float dx = 0, float dy = 0, uint32_t color_override = 0);

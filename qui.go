@@ -54,6 +54,13 @@ type Style struct {
 	// NoSelect keeps the mouse from selecting text in this subtree; Select
 	// on a descendant turns it back on there.
 	NoSelect bool
+	// Ease animates changes to Bg, Fg, Border, Radius, Opacity and the hover
+	// tint of buttons over this many milliseconds. Keyed nodes keep their
+	// animation across frames.
+	Ease float32
+	// HoverBg replaces Bg while the pointer is over the box or anything in
+	// it, without waiting a frame.
+	HoverBg Color
 }
 
 type TextStyle struct {
@@ -179,6 +186,8 @@ type Ui struct {
 	reduceMotion bool
 	nodes        int
 	stats        Stats
+	frame        uint64
+	tweens       map[uint64]*tween
 }
 
 func newUi() *Ui {
@@ -201,6 +210,12 @@ func (u *Ui) Frame() bool {
 	u.started = true
 	u.buf = u.buf[:0]
 	u.nodes = 0
+	u.frame++
+	for id, t := range u.tweens {
+		if t.seen+1 < u.frame {
+			delete(u.tweens, id)
+		}
+	}
 	u.stack = append(u.stack[:0], scope{hashSeed, 0})
 	u.u8(opFrame)
 	u.u8(wireVersion)
@@ -218,7 +233,7 @@ func (u *Ui) Dt() float32       { return u.header(20) }
 func (u *Ui) PointerX() float32 { return u.header(24) }
 func (u *Ui) PointerY() float32 { return u.header(28) }
 
-// SetReduceMotion makes drawers snap instead of sliding.
+// SetReduceMotion makes drawers, Ease and Tween snap instead of animating.
 func (u *Ui) SetReduceMotion(on bool) { u.reduceMotion = on }
 
 // PointerDown reports whether the primary pointer button is held anywhere, or
@@ -620,6 +635,12 @@ func (u *Ui) emitStyle(s *Style) {
 	}
 	if s.NoSelect {
 		u.u8(opNoSelect)
+	}
+	if s.Ease != 0 && !u.reduceMotion {
+		u.f32Op(opEase, s.Ease)
+	}
+	if s.HoverBg != 0 {
+		u.u32Op(opHoverBg, uint32(s.HoverBg))
 	}
 	if s.Wrap {
 		u.u8(opWrap)
