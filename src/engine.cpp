@@ -363,6 +363,10 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         node.align = Start;
         break;
       case OpPassword: node.password = true; break;
+      case OpBare:
+        node.bg = 0;
+        node.border = 0;
+        break;
       case OpPassthroughNav: node.passthrough_nav = true; break;
       case OpFocus:
         node.focus_mode = in.read<uint8_t>();

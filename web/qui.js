@@ -56,6 +56,7 @@ const baseCss = `
 .qui-input { display: block; padding: 5px 9px; border: 1px solid var(--qui-Line); border-radius: 6px; background: var(--qui-Inset);
   color: var(--qui-Ink); font: inherit; outline: none; resize: none; }
 .qui-input:focus { border-color: var(--qui-Accent); }
+.qui-input.qui-bare { border-width: 0; background: transparent; }
 .qui-input::placeholder { color: var(--qui-Muted); opacity: 1; }
 .qui-list { overflow-y: auto; display: block; }
 .qui-huge { overflow-anchor: none; }
@@ -208,6 +209,7 @@ function decode(bytes, length) {
       case Op.Placeholder: node.placeholder = r.str(); break;
       case Op.Multiline: node.multiline = r.u8(); break;
       case Op.Password: node.password = true; break;
+      case Op.Bare: node.bare = true; break;
       case Op.PassthroughNav: node.passthroughNav = true; break;
       case Op.Focus: node.focus = r.u8(); break;
       case Op.Z: node.z = r.u32() | 0; break;
@@ -1085,6 +1087,7 @@ class Patcher {
   patchField(el, node) {
     el.__multi = node.multiline ?? 0;
     el.__navPass = !!node.passthroughNav;
+    el.classList.toggle("qui-bare", !!node.bare);
     el.__fixedHeight = (node.hMode ?? Size.Fit) !== Size.Fit;
     el.placeholder = node.placeholder ?? "";
     if (!node.multiline) el.type = node.password ? "password" : "text";

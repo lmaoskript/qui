@@ -44,6 +44,7 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `Bg`, `Fg` | `color:u32` |
 | `Border` | `color:u32 width:f32` |
 | `Clip`, `Scroll`, `Mono`, `Ellipsis`, `Password`, `PassthroughNav`, `Select`, `Wrap` | none |
+| `Bare` | none, on an `Input` directly after `Open`: clears its default background and border, so a focused field shows no accent border |
 | `Label`, `Text`, `Src`, `Placeholder` | `str` |
 | `Virtual` | `count:u32 estimate:f32 bottom:u8` |
 | `Item` | `index:u32` |

@@ -183,6 +183,9 @@ struct InputOptions {
   std::string_view placeholder{};
   float size = 0;
   bool mono = false, multiline = false, enter_submits = false, password = false, autofocus = false, focus = false, passthrough_nav = false;
+  // Drops the field's own background and border, focus accent included, for a
+  // field drawn inside a box of your own.
+  bool bare = false;
 };
 
 enum class Side : uint8_t { Left, Right, Top, Bottom };
@@ -666,6 +669,7 @@ class Ui {
     Response result = lookup(id);
     if (result.changed) value.assign(reinterpret_cast<const char *>(res_) + header_u32(40) + result.first, result.count);
     result.first = result.count = 0;
+    if (options.bare) u8(wire::OpBare);
     emit_style(options.style);
     str(wire::OpText, value);
     if (!options.placeholder.empty()) str(wire::OpPlaceholder, options.placeholder);

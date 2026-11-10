@@ -147,6 +147,9 @@ type InputOptions struct {
 	Mono, Multiline, EnterSubmits, Password, Autofocus, Focus bool
 	// PassthroughNav hands Up, Down and Tab to the app instead of the field.
 	PassthroughNav bool
+	// Bare drops the field's own background and border, focus accent
+	// included, for a field drawn inside a box of your own.
+	Bare bool
 }
 
 type scope struct {
@@ -353,6 +356,9 @@ func (u *Ui) Input(key string, value *string, options ...InputOptions) Response 
 		*value = string(u.res[start : start+result.Count])
 	}
 	result.First, result.Count = 0, 0
+	if o.Bare {
+		u.u8(opBare)
+	}
 	u.emitStyle(&o.Style)
 	u.str(opText, *value)
 	if o.Placeholder != "" {
