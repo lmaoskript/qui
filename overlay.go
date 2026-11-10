@@ -16,7 +16,8 @@ const (
 func (u *Ui) Modal(key string, panel Style, body func()) bool {
 	dismissed := false
 	u.Stack(Style{Key: key, Absolute: true, W: Fill(), H: Fill(), Z: overlayZ, Align: Center, Justify: Center}, func() {
-		scrim := u.Column(Style{Key: key + "/scrim", Absolute: true, W: Fill(), H: Fill(), Bg: Scrim, Hit: true}, func() {})
+		pop := u.TweenFrom(key+"/pop", 0.01, 1, 160)
+		scrim := u.Column(Style{Key: key + "/scrim", Absolute: true, W: Fill(), H: Fill(), Bg: Scrim, Opacity: pop, Hit: true}, func() {})
 		if scrim.Clicked || scrim.DragEnd {
 			dismissed = true
 		}
@@ -30,7 +31,7 @@ func (u *Ui) Modal(key string, panel Style, body func()) bool {
 		if h := u.Height() - 2*modalMargin; h > 0 && (panel.MaxH == 0 || panel.MaxH > h) {
 			panel.MaxH = h
 		}
-		panel.Select = true
+		panel.Select, panel.Opacity = true, pop
 		u.Column(panel, body)
 	})
 	return dismissed || u.KeyPressed(KeyEscape)
@@ -57,6 +58,7 @@ func (u *Ui) Popup(key string, x, y float32, panel Style, body func()) bool {
 			dismissed = true
 		}
 		panel.Absolute, panel.X, panel.Y, panel.Hit, panel.Select = true, x, y, true, true
+		panel.Opacity = u.TweenFrom(key+"/pop", 0.01, 1, 110)
 		if panel.Key == "" {
 			panel.Key = key + "/panel"
 		}

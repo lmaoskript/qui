@@ -316,12 +316,17 @@ class Ui {
   // for what Style::ease does not animate, such as a size or a position. Call
   // it once per frame per key. The first call, and a call after a frame
   // without one, returns target.
-  float tween(std::string_view key, float target, float ms) {
+  float tween(std::string_view key, float target, float ms) { return tween_from(key, target, target, ms); }
+
+  // Like tween, but starts at from the first time the key is seen, so a box can
+  // animate in when it appears.
+  float tween_from(std::string_view key, float from, float target, float ms) {
     const uint64_t id = mix(stack_.back().id, key.data(), key.size());
     auto [it, fresh] = tweens_.try_emplace(id);
     Tween &t = it->second;
     if (fresh || t.seen + 1 < frame_count_ || reduce_motion_ || ms <= 0) {
       t = {target, target, 0, 0, 0};
+      if (from != target && !reduce_motion_ && ms > 0) t = {from, target, 0, ms / 1000, 0};
     } else if (t.to != target) {
       t = {t.value(), target, 0, ms / 1000, 0};
     } else {
@@ -518,13 +523,15 @@ class Ui {
     bool dismissed = false;
     const std::string scrim_key = std::string(key) + "/scrim", panel_key = std::string(key) + "/panel";
     stack({.w = fill(), .h = fill(), .align = Center, .justify = Center, .absolute = true, .z = kOverlayZ, .key = key}, [&] {
-      const Response scrim = column({.w = fill(), .h = fill(), .absolute = true, .bg = Scrim, .hit = true, .key = scrim_key}, [] {});
+      const float pop = tween_from(std::string(key) + "/pop", 0.01F, 1, 160);
+      const Response scrim = column({.w = fill(), .h = fill(), .absolute = true, .bg = Scrim, .opacity = pop, .hit = true, .key = scrim_key}, [] {});
       if (scrim.clicked || scrim.drag_end) dismissed = true;
       panel.hit = true;
       panel.select = true;
       if (panel.key.empty()) panel.key = panel_key;
       if (const float w = width() - 2 * kModalMargin; w > 0 && (!panel.max_w || panel.max_w > w)) panel.max_w = w;
       if (const float h = height() - 2 * kModalMargin; h > 0 && (!panel.max_h || panel.max_h > h)) panel.max_h = h;
+      panel.opacity = pop;
       column(panel, body);
     });
     return dismissed || key_pressed(KeyEscape);
@@ -542,6 +549,7 @@ class Ui {
       panel.absolute = true;
       panel.x = x;
       panel.y = y;
+      panel.opacity = tween_from(std::string(key) + "/pop", 0.01F, 1, 110);
       panel.hit = true;
       panel.select = true;
       if (panel.key.empty()) panel.key = panel_key;
