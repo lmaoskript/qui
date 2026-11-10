@@ -6,7 +6,7 @@ namespace qui {
 
 namespace wire {
 
-inline constexpr uint8_t kVersion = 17;
+inline constexpr uint8_t kVersion = 18;
 inline constexpr int kThemeCount = 4;
 inline constexpr int kTokenCount = 19;
 
@@ -175,6 +175,8 @@ inline constexpr uint8_t RoleMain = 4;
 inline constexpr uint8_t RoleNav = 5;
 inline constexpr uint8_t RoleSwitch = 6;
 inline constexpr uint8_t RoleSlider = 7;
+inline constexpr uint8_t RoleMenu = 8;
+inline constexpr uint8_t RoleMenuItem = 9;
 
 inline constexpr uint8_t Slate = 0;
 inline constexpr uint8_t Midnight = 1;

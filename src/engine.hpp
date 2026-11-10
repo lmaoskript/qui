@@ -296,6 +296,7 @@ class Engine {
   std::unordered_map<uint64_t, InputState> inputs;
   Interaction ui;
   uint64_t focus_request = 0;
+  bool menu_open = false;
   float insets[4] = {};
   FontManager fonts;
   TextShaper shaper{fonts};

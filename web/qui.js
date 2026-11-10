@@ -45,6 +45,7 @@ const baseCss = `
 .qui-btn:hover { box-shadow: inset 0 0 0 999px var(--qui-Hover); }
 .qui-btn:active { box-shadow: inset 0 0 0 999px var(--qui-Active); }
 .qui-btn:focus-visible, .qui-root [role=switch]:focus-visible, .qui-root [role=slider]:focus-visible { outline: 2px solid var(--qui-Accent); outline-offset: 1px; }
+.qui-root [role=menu], .qui-root [role=menuitem] { outline: none; }
 .qui-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .qui-input { display: block; padding: 5px 9px; border: 1px solid var(--qui-Line); border-radius: 6px; background: var(--qui-Inset);
   color: var(--qui-Ink); font: inherit; outline: none; resize: none; }
@@ -756,6 +757,12 @@ class Patcher {
         e.preventDefault();
         e.target.click();
         return;
+      } else if (e.target.getAttribute?.("role") === "menuitem" && !mods && (code === Key.Enter || code === Key.Space)) {
+        e.preventDefault();
+        e.target.click();
+        return;
+      } else if (/^menu/.test(e.target.getAttribute?.("role") ?? "") && [Key.Up, Key.Down, Key.Home, Key.End].includes(code)) {
+        e.preventDefault();
       } else if (e.target.getAttribute?.("role") === "slider" && [Key.Left, Key.Right, Key.Up, Key.Down, Key.Home, Key.End].includes(code)) {
         e.preventDefault();
       }
@@ -988,6 +995,10 @@ class Patcher {
           el.setAttribute("aria-valuenow", String(Math.round((node.value ?? 0) * 100)));
         }
       }
+      if (node.role === Role.Menu || node.role === Role.MenuItem) {
+        el.setAttribute("role", node.role === Role.Menu ? "menu" : "menuitem");
+        el.tabIndex = -1;
+      }
       el.classList.toggle("qui-select", !!node.select);
       if (node.hit || node.kind === Kind.Button || node.kind === Kind.Input) el.setAttribute("data-qh", "");
       else el.removeAttribute("data-qh");
@@ -1011,6 +1022,10 @@ class Patcher {
         el.height = image.h;
         el.getContext("2d").putImageData(new ImageData(image.data, image.w, image.h), 0, 0);
       }
+    }
+    if (node.role === Role.Menu) {
+      this.menuSeen = true;
+      this.menuReturn ??= document.activeElement;
     }
     if (node.focus && document.activeElement !== el && (node.focus === 2 || !el.__autofocused)) {
       el.__autofocused = true;
@@ -1110,7 +1125,12 @@ class Patcher {
     root.dir = Dir.Stack;
     root.kind = Kind.Box;
     root.hDef = true;
+    this.menuSeen = false;
     this.reconcile(this.root, root, null, null);
+    if (this.menuReturn && !this.menuSeen) {
+      this.menuReturn.focus();
+      this.menuReturn = null;
+    }
     this.engineMs = performance.now() - began;
   }
 

@@ -172,6 +172,24 @@ struct Drawer {
   bool held = false, started = false;
 };
 
+struct MenuItem {
+  std::string_view label{};
+  // When set, replaces label after the first press; the item is chosen only by
+  // the second.
+  std::string_view confirm{};
+  bool danger = false;
+};
+
+// State of a context menu. Keep one per menu and open it with show.
+struct Menu {
+  bool open = false;
+  float x = 0, y = 0;
+  // Row positions are index+1, so 0 means none.
+  int active = 0, hovered = 0, confirm = 0;
+
+  void show(float at_x, float at_y) { *this = {.open = true, .x = at_x, .y = at_y}; }
+};
+
 struct DrawerOptions {
   Side side = Side::Left;
   float size = 0;
@@ -466,6 +484,74 @@ class Ui {
       else if (key_pressed(KeyEnd)) value = 1;
     }
     return value;
+  }
+
+  // Draws an open menu and returns the index of the chosen item, or -1. It closes
+  // itself on a choice, a press outside it and Escape. The arrow keys, Home and
+  // End move through the items, Enter and Space choose, and focus returns to
+  // where it was when the menu closes. Without a klass, unset panel fields get
+  // the defaults.
+  int menu(Menu &m, std::span<const MenuItem> items, Style s = {}) {
+    if (!m.open || items.empty()) return -1;
+    constexpr float row_height = 32, margin = 8;
+    if (s.klass.empty()) {
+      if (s.w.mode == wire::SizeFit && s.w.value == 0) s.w = px(224);
+      if (!s.bg) s.bg = Raised;
+      if (!s.border) s.border = Line;
+      if (!s.border_w) s.border_w = 1;
+      if (!s.radius) s.radius = 8;
+      if (!s.pad.top && !s.pad.right && !s.pad.bottom && !s.pad.left) s.pad = 6;
+      if (!s.shadow.color) s.shadow = {Shadow, 16, 4};
+    }
+    s.role = RoleMenu;
+
+    const int count = static_cast<int>(items.size());
+    const int before = m.active;
+    if (key_pressed(KeyDown)) m.active = m.active % count + 1;
+    else if (key_pressed(KeyUp)) m.active = m.active > 1 ? m.active - 1 : count;
+    else if (key_pressed(KeyHome)) m.active = 1;
+    else if (key_pressed(KeyEnd)) m.active = count;
+
+    float panel_h = static_cast<float>(count) * row_height + static_cast<float>(count - 1) * s.gap + s.pad.top + s.pad.bottom;
+    if (const float limit = height() - 2 * margin; panel_h > limit) {
+      panel_h = s.max_h = limit;
+      s.scroll = true;
+      if (m.active != before) s.scroll_to = std::max(0.f, static_cast<float>(m.active - 1) * (row_height + s.gap) - (panel_h - row_height) / 2);
+    }
+    const float y = std::max(margin, std::min(m.y, height() - panel_h - margin));
+
+    int chosen = -1, hovered = 0;
+    const bool dismissed = popup("qui/menu", m.x, y, s, [&] {
+      if (m.active == 0) u8_op(wire::OpFocus, 2);
+      for (int i = 0; i < count; ++i) {
+        const MenuItem &item = items[static_cast<size_t>(i)];
+        const int position = i + 1;
+        const Response r = row({.w = fill(), .h = px(row_height), .pad = {0, 8}, .align = Center, .bg = position == m.active ? Hover : Color{0}, .radius = 6, .hit = true, .role = RoleMenuItem}, [&] {
+          if (position == m.active) u8_op(wire::OpFocus, 2);
+          text(position == m.confirm ? item.confirm : item.label, {.ellipsis = true, .color = item.danger ? Danger : Ink, .w = fill()});
+        });
+        if (r.hovered) hovered = position;
+        if (r.clicked) {
+          if (!item.confirm.empty() && m.confirm != position) {
+            m.confirm = position;
+            wake();
+          } else {
+            chosen = i;
+          }
+        }
+      }
+    });
+    if (hovered != m.hovered) {
+      if (hovered) m.active = hovered;
+      else if (m.active == m.hovered) m.active = 0;
+      m.hovered = hovered;
+      wake();
+    }
+    if (chosen >= 0 || dismissed) {
+      m.open = false;
+      wake();
+    }
+    return chosen;
   }
 
   template <class F>

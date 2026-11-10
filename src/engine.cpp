@@ -187,6 +187,7 @@ Engine::Engine() {
 }
 
 void Engine::decode(const uint8_t *wire, size_t len) {
+  menu_open = false;
   nodes.clear();
   lines.clear();
   uniforms.clear();
@@ -328,7 +329,10 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpValue: in.read<float>(); break;
       case OpScroll: node.scroll = node.clip = true; break;
       case OpHit: node.hit = in.read<uint8_t>(); break;
-      case OpRole: node.role = in.read<uint8_t>(); break;
+      case OpRole:
+        node.role = in.read<uint8_t>();
+        if (node.role == RoleMenu) menu_open = true;
+        break;
       case OpLabel: node.label = in.str(); break;
       case OpText: node.text = in.str(); break;
       case OpFontSize: node.font_size = in.read<float>(); break;
@@ -352,7 +356,10 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         break;
       case OpPassword: node.password = true; break;
       case OpPassthroughNav: node.passthrough_nav = true; break;
-      case OpFocus: node.focus_mode = in.read<uint8_t>(); break;
+      case OpFocus:
+        node.focus_mode = in.read<uint8_t>();
+        if (node.focus_mode == 2 && node.kind != KindInput) focus_request = node.id;
+        break;
       case OpZ: node.z = in.read<int32_t>(); break;
       case OpGradient:
         node.gradient_from = in.read<uint32_t>();
@@ -1174,7 +1181,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     hit.cy1 = static_cast<float>(clip.y + clip.h) / dpr;
     hit.press = node.hit != 0;
     hit.scroll = node.scroll || node.kind == KindList || (node.kind == KindInput && node.multiline);
-    hit.focusable = node.kind == KindButton || node.kind == KindInput || node.role == RoleSwitch || node.role == RoleSlider;
+    hit.focusable = node.kind == KindButton || node.kind == KindInput || node.role == RoleSwitch || node.role == RoleSlider || node.role == RoleMenu || node.role == RoleMenuItem;
     hit.scroll_parent = scroll_parent_;
     hit.parent = hit_parent_;
     hit.gestures = node.gestures;

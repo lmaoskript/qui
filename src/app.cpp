@@ -230,6 +230,8 @@ struct qui_app {
   float press_x = 0, press_y = 0;
   float drag_dx = 0, drag_dy = 0;
   uint64_t hovered = 0, pressed = 0, focused = 0, clicked = 0, right_clicked = 0;
+  uint64_t menu_return = 0;
+  bool menu_open = false;
   uint64_t drag_start = 0, drag_end = 0, scrollbar_hovered = 0, scrollbar_dragged = 0;
   float scrollbar_grab = 0;
   bool back_pending = false, back_consumed = false;
@@ -1572,6 +1574,11 @@ struct qui_app {
     engine.insets[2] = inset_bottom;
     engine.insets[3] = inset_left;
     engine.layout(logical_w, logical_h, dpr);
+    if (engine.menu_open != menu_open) {
+      menu_open = engine.menu_open;
+      if (menu_open) menu_return = focused;
+      else engine.focus_request = std::exchange(menu_return, 0);
+    }
     if (engine.focus_request) {
       set_focus(engine.focus_request, false);
       engine.focus_request = 0;
