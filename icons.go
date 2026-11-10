@@ -75,7 +75,10 @@ func (u *Ui) IconButton(svg Svg, label string, s Style) Response {
 		s.W = Px(iconButtonSize)
 	}
 	if s.H.mode == sizeFit {
-		s.H = s.W
+		s.H = Px(iconButtonSize)
+		if s.W.mode == sizePx {
+			s.H = s.W
+		}
 	}
 	if s.Radius == 0 {
 		s.Radius = 6

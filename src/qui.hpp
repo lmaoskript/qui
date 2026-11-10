@@ -436,7 +436,7 @@ class Ui {
     if (!style.klass.empty()) style = resolve_style(style);
     if (style.key.empty()) style.key = label;
     if (style.w.mode == wire::SizeFit) style.w = px(32);
-    if (style.h.mode == wire::SizeFit) style.h = style.w;
+    if (style.h.mode == wire::SizeFit) style.h = style.w.mode == wire::SizePx ? style.w : px(32);
     if (!style.radius) style.radius = 6;
     style.align = style.justify = Center;
     style.hit = true;
