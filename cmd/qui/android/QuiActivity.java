@@ -53,6 +53,9 @@ public class QuiActivity extends SDLActivity {
     private static final class Surface extends SDLSurface {
         Surface(Context context) {
             super(context);
+            // A key press leaves touch mode, and Android would then outline the
+            // whole surface as the focused view.
+            if (Build.VERSION.SDK_INT >= 26) setDefaultFocusHighlightEnabled(false);
         }
 
         // SDL's default also reserves the system gesture areas, which would inset
