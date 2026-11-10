@@ -184,6 +184,10 @@ void *pump_stdio_to_logcat(void *arg) {
   return nullptr;
 }
 
+// QuiActivity answers this message by switching the system bar icons between
+// dark (param 1, for a light background) and light.
+constexpr Uint32 kLightBarsCommand = 0x8001;
+
 void move_task_to_back() {
   auto *env = static_cast<JNIEnv *>(SDL_GetAndroidJNIEnv());
   auto activity = static_cast<jobject>(SDL_GetAndroidActivity());
@@ -284,6 +288,7 @@ struct qui_app {
   // recreated, so a resume redraws a few times while it settles.
   int settle_frames = 0;
   double settle_next = 0;
+  int light_bars = -1;
   double last_frame_time = 0;
   float dt = 1.f / 60.f;
 
@@ -1717,6 +1722,15 @@ struct qui_app {
     if (backend->take_compiled()) dirty = true;
     engine_ms = static_cast<float>((now() - began) * 1000);
     if (!damage.empty() && !headless) present(gl ? full : damage);
+#if defined(__ANDROID__)
+    if (const uint32_t c = engine.previous.clear; !headless) {
+      const float luma = 0.2126f * static_cast<float>((c >> 24) & 0xff) + 0.7152f * static_cast<float>((c >> 16) & 0xff) + 0.0722f * static_cast<float>((c >> 8) & 0xff);
+      if (const int light = luma > 128 ? 1 : 0; light != light_bars) {
+        light_bars = light;
+        SDL_SendAndroidMessage(kLightBarsCommand, light);
+      }
+    }
+#endif
     if (animating()) next_tick = now() + tick_interval();
     if (engine.wants_another_frame) dirty = true;
     if (back_pending) {

@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 
 public class QuiActivity extends SDLActivity {
     @Override
@@ -23,6 +24,25 @@ public class QuiActivity extends SDLActivity {
             window.setStatusBarContrastEnforced(false);
             window.setNavigationBarContrastEnforced(false);
         }
+    }
+
+    // qui sends this when the background behind the system bars turns light
+    // (param 1) or dark, so the bar icons stay readable.
+    private static final int COMMAND_LIGHT_BARS = 0x8001;
+
+    @Override
+    protected boolean onUnhandledMessage(int command, Object param) {
+        if (command != COMMAND_LIGHT_BARS) {
+            return super.onUnhandledMessage(command, param);
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            final int bars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsAppearance(Integer.valueOf(1).equals(param) ? bars : 0, bars);
+            }
+        }
+        return true;
     }
 
     @Override
