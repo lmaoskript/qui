@@ -1,8 +1,9 @@
 package qui
 
-// Overlays are boxes that float above the whole window. Call them from the
-// root container (a Stack or any container the size of the window), after the
-// content they cover, so they paint and hit-test on top.
+// Overlays are boxes that float above the whole window. Call them after the
+// content they cover, so they paint and hit-test on top. Popup and Tooltip are
+// placed in window coordinates from anywhere; Modal centers in its parent, so
+// call it from a container that covers the area it should dim.
 
 const (
 	overlayZ    = 1 << 20
@@ -50,7 +51,7 @@ func (u *Ui) Popup(key string, x, y float32, panel Style, body func()) bool {
 	if x < 0 {
 		x = 0
 	}
-	u.Stack(Style{Key: key, Absolute: true, W: Fill(), H: Fill(), Z: overlayZ}, func() {
+	u.Stack(Style{Key: key, Fixed: true, W: Fill(), H: Fill(), Z: overlayZ}, func() {
 		catcher := u.Column(Style{Key: key + "/catcher", Absolute: true, W: Fill(), H: Fill(), Hit: true}, func() {})
 		if catcher.Clicked || catcher.RightClicked {
 			dismissed = true
@@ -74,7 +75,7 @@ func (u *Ui) Tooltip(show bool, text string, style ...Style) {
 	if len(style) > 0 {
 		s = style[0]
 	}
-	s.Absolute, s.X, s.Y, s.Z = true, u.PointerX()+12, u.PointerY()+16, overlayZ+1
+	s.Fixed, s.X, s.Y, s.Z = true, u.PointerX()+12, u.PointerY()+16, overlayZ+1
 	if s.X+200 > u.Width() {
 		s.X = u.PointerX() - 212
 	}

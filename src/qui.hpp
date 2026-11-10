@@ -83,6 +83,10 @@ struct Style {
   // Moves the window when pressed outside the hit boxes inside it, as a title
   // bar does. Native desktop only; see set_borderless.
   bool drag = false;
+  // Positions the box at x, y in window coordinates, as CSS position: fixed
+  // does. Fill sizes take the window's size, and the parent's clip and scroll
+  // do not apply.
+  bool fixed = false;
 };
 
 struct TextStyle {
@@ -531,7 +535,7 @@ class Ui {
     const std::string catcher_key = std::string(key) + "/catcher", panel_key = std::string(key) + "/panel";
     if (panel.w.mode == wire::SizePx && x + panel.w.value > width()) x -= x + panel.w.value - width() + 8;
     if (x < 0) x = 0;
-    stack({.w = fill(), .h = fill(), .absolute = true, .z = kOverlayZ, .key = key}, [&] {
+    stack({.w = fill(), .h = fill(), .z = kOverlayZ, .key = key, .fixed = true}, [&] {
       const Response catcher = column({.w = fill(), .h = fill(), .absolute = true, .hit = true, .key = catcher_key}, [] {});
       if (catcher.clicked || catcher.right_clicked) dismissed = true;
       panel.absolute = true;
@@ -548,7 +552,7 @@ class Ui {
   // Shows `text` beside the pointer while `show` is true, usually a response's hovered.
   void tooltip(bool show, std::string_view text, Style style = {}) {
     if (!show || text.empty()) return;
-    style.absolute = true;
+    style.fixed = true;
     style.x = pointer_x() + 12;
     style.y = pointer_y() + 16;
     style.z = kOverlayZ + 1;
@@ -1039,6 +1043,7 @@ class Ui {
     if (!s.ease) s.ease = b.ease;
     if (!s.hover_bg) s.hover_bg = b.hover_bg;
     s.drag |= b.drag;
+    s.fixed |= b.fixed;
     if (!s.gradient.from && !s.gradient.to) s.gradient = b.gradient;
     if (!s.shadow.color) s.shadow = b.shadow;
     s.clip |= b.clip;
@@ -1072,11 +1077,12 @@ class Ui {
     if (s.gap) f32_op(wire::OpGap, s.gap);
     if (s.align) u8_op(wire::OpAlign, s.align);
     if (s.justify) u8_op(wire::OpJustify, s.justify);
-    if (s.absolute) {
+    if (s.absolute || s.fixed) {
       u8(wire::OpPos);
       f32(s.x);
       f32(s.y);
     }
+    if (s.fixed) u8(wire::OpFixed);
     if (s.z) u32_op(wire::OpZ, static_cast<uint32_t>(s.z));
     if (s.bg) u32_op(wire::OpBg, s.bg);
     if (s.fg) u32_op(wire::OpFg, s.fg);

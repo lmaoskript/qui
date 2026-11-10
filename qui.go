@@ -64,6 +64,10 @@ type Style struct {
 	// Drag makes the box move the window when pressed outside the hit boxes
 	// inside it, as a title bar does. Native desktop only; see SetBorderless.
 	Drag bool
+	// Fixed positions the box at X, Y in window coordinates, as CSS
+	// position: fixed does. Fill sizes take the window's size, and the parent's
+	// clip and scroll do not apply.
+	Fixed bool
 }
 
 type TextStyle struct {
@@ -590,10 +594,13 @@ func (u *Ui) emitStyle(s *Style) {
 	if s.Justify != 0 {
 		u.u8Op(opJustify, uint8(s.Justify))
 	}
-	if s.Absolute {
+	if s.Absolute || s.Fixed {
 		u.u8(opPos)
 		u.f32(s.X)
 		u.f32(s.Y)
+	}
+	if s.Fixed {
+		u.u8(opFixed)
 	}
 	if s.Z != 0 {
 		u.u32Op(opZ, uint32(s.Z))

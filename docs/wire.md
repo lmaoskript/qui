@@ -50,6 +50,7 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `Ease` | `f32` milliseconds: changes to `Bg`, `Fg`, `Border`, `Radius`, `Opacity` and the button hover tint animate (ease-out cubic) instead of jumping. State is kept per node id; a node absent for a frame starts fresh. On the web it is a CSS `transition` |
 | `HoverBg` | `color:u32`: the background while the pointer is over this box or any hit inside it, in place of a button's hover tint. On the web it is `:hover` |
 | `Drag` | none: a press on this box, outside the hit boxes inside it, moves the window. Native desktop only; it is for windows opened borderless (`qui_set_borderless`) |
+| `Fixed` | none: with `Pos`, the box is placed in window coordinates instead of its parent's; `Fill` takes the window's size, and the parent's clip and scroll do not apply |
 | `Bare` | none, on an `Input` directly after `Open`: clears its default background and border, so a focused field shows no accent border |
 | `Label`, `Text`, `Src`, `Placeholder` | `str` |
 | `Virtual` | `count:u32 estimate:f32 bottom:u8` |
@@ -124,6 +125,7 @@ Every box is `box-sizing: border-box` with `min-width: 0` and `min-height: 0`.
 | `Column`, `Row` | `display: flex` with `flex-direction` |
 | `Stack` | one-cell grid, every child in cell `1 / 1` |
 | `Pos` | `position: absolute` with `left` and `top` |
+| `Fixed` | `position: fixed` with `left` and `top` |
 | `Fit` on a row's width | `flex: 0 1 auto` |
 | `Fit` elsewhere | `flex: 0 0 auto` |
 | `Fill` on the main axis | `flex: <weight> 1 0` |

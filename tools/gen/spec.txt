@@ -1,7 +1,7 @@
 # Single source of truth for the wire format and themes.
 # Run `go run ./tools/gen` after editing.
 
-version 25
+version 26
 
 kind Box 0
 kind Text 1
@@ -117,6 +117,7 @@ op Ease 60
 op HoverBg 61
 op Glide 62
 op Drag 63
+op Fixed 64
 
 gesture PanX 1
 gesture PanY 2

@@ -378,6 +378,10 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpJump: node.jump = in.read<uint32_t>(); node.has_jump = true; break;
       case OpGlide: node.glide = true; break;
       case OpDrag: node.drag = true; break;
+      case OpFixed:
+        node.fixed = true;
+        node.has_pos = true;
+        break;
       case OpSrc: node.src = in.str(); break;
       case OpFps: node.fps = in.read<float>(); break;
       case OpPlaceholder: node.placeholder = in.str(); break;
@@ -541,7 +545,8 @@ void Engine::distribute_width(Node &node) {
   }
   each_child(nodes, node, [&](Node &c) {
     if (in_flow(c)) return;
-    c.w = c.w_mode == SizePx ? c.w_val : c.w_mode == SizePct ? inner * c.w_val / 100 : c.w_mode == SizeFill ? inner : c.iw;
+    const float room = c.fixed ? nodes[0].w : inner;
+    c.w = c.w_mode == SizePx ? c.w_val : c.w_mode == SizePct ? room * c.w_val / 100 : c.w_mode == SizeFill ? room : c.iw;
     c.w = clamp_size(c.w, c.min_w, c.max_w);
   });
   if (node.dir != DirRow || node.wrap) {
@@ -685,7 +690,8 @@ void Engine::distribute_height(Node &node) {
   }
   each_child(nodes, node, [&](Node &c) {
     if (in_flow(c)) return;
-    c.h = c.h_mode == SizePx ? c.h_val : c.h_mode == SizePct ? inner * c.h_val / 100 : c.h_mode == SizeFill ? inner : c.ih;
+    const float room = c.fixed ? nodes[0].h : inner;
+    c.h = c.h_mode == SizePx ? c.h_val : c.h_mode == SizePct ? room * c.h_val / 100 : c.h_mode == SizeFill ? room : c.ih;
     c.h = clamp_size(c.h, c.min_h, c.max_h);
   });
   if (node.dir != DirColumn) {
@@ -945,8 +951,8 @@ void Engine::place_children(Node &node) {
 
   each_child(nodes, node, [&](Node &c) {
     if (!in_flow(c)) {
-      c.x = left + c.pos_x;
-      c.y = top + c.pos_y;
+      c.x = c.fixed ? c.pos_x : left + c.pos_x;
+      c.y = c.fixed ? c.pos_y : top + c.pos_y;
     }
   });
 
@@ -1259,6 +1265,15 @@ Engine::EaseValues Engine::ease(const Node &node, const EaseValues &target) {
 
 void Engine::paint_node(int index, float opacity, IRect clip) {
   Node &node = nodes[static_cast<size_t>(index)];
+  struct RestoreRound {
+    RoundClip &slot;
+    RoundClip saved;
+    ~RestoreRound() { slot = saved; }
+  } restore_round{round_clip_, round_clip_};
+  if (node.fixed) {
+    clip = {0, 0, frame.width, frame.height};
+    round_clip_ = {};
+  }
   const uint64_t hovered = ui.hovered, pressed = ui.pressed;
   uint32_t tint = (node.kind == KindButton || node.role == RoleButton) && (node.id == pressed || (node.id == hovered && !node.hover_bg)) ? resolve(node.id == pressed ? Active : Hover) : 0;
   if (node.hover_bg && std::find(hover_chain_.begin(), hover_chain_.end(), node.id) != hover_chain_.end()) node.bg = node.hover_bg;

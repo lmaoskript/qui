@@ -73,7 +73,7 @@ int main() {
 
 A strict flexbox subset that maps directly to CSS.
 
-- `Column`, `Row`, and `Stack` (children overlap). `Absolute: true, X, Y` positions relative to the parent.
+- `Column`, `Row`, and `Stack` (children overlap). `Absolute: true, X, Y` positions relative to the parent; `Fixed: true, X, Y` relative to the window, where `Fill` means the window size and the parent's clip and scroll do not apply.
 - Sizes: fit by default, `Px(n)`, `Fill()`, `FillN(weight)`, `Pct(n)`.
 - Padding: Go `All(n)`, `XY(x, y)`, `Edges{Top, Right, Bottom, Left}`; C++ `16`, `{v, h}`, `{t, r, b, l}`.
 - `Align` is the cross axis (`Start Center End Stretch`), `Justify` the main axis (`Start Center End Between`).
@@ -87,7 +87,7 @@ A strict flexbox subset that maps directly to CSS.
 - Text is mouse-selectable everywhere, as in a browser (drag, double-click a word, triple-click a text, Ctrl+C copies), except in buttons, inputs, menus, switches and sliders; a drag that selects text does not click or drag the `Hit` box under it. `NoSelect: true` turns selection off for a subtree (navigation, lists you click through, draggable tiles) and `Select: true` turns it back on below and keeps a selection that starts there inside it; modals, popups and drawers do that already. `ui.SelectedText()` (C++ `selected_text()`) returns the selection for a Copy menu item. Touch input does not select.
 - `ScrollTo: &offset` sets a `Scroll` box's offset for that frame. Animate it yourself for smooth anchors, and stop sending it when done so the user can scroll. A zero-height `Hit` box inside the scroller reports its viewport-relative `Y` even offscreen, which gives you scroll position, reveal-on-scroll and scroll-spy. Web scrolling does not wake the loop, so run a ticker calling `ui.Wake()` for those.
 
-`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Gestures Role Label Key Class Select Wrap NoSelect Ease HoverBg Drag` (C++ `select`, `wrap`, `no_select`, `ease`, `hover_bg`, `drag` come last)
+`Style` fields, in order: `W H MinW MaxW MinH MaxH Pad Gap Align Justify Absolute X Y Z Bg Fg Border BorderW Radius Opacity Gradient Shadow Clip Scroll Hit ScrollTo Gestures Role Label Key Class Select Wrap NoSelect Ease HoverBg Drag Fixed` (C++ `select`, `wrap`, `no_select`, `ease`, `hover_bg`, `drag`, `fixed` come last)
 
 `TextStyle` fields, in order: `Size Bold Mono Ellipsis Color W Align Role Gradient Tracking Class`. Presets: `Body H1 H2 Small Code`.
 
@@ -240,7 +240,7 @@ One paragraph that wraps across spans. Offsets are UTF-8 byte offsets; spans are
 
 ## Overlays
 
-Call these from the root container, after the content they cover. `Modal` and `Popup` return true when the user clicked outside or pressed Escape, so you can close them.
+Call these after the content they cover. `Popup` and `Tooltip` use window coordinates from anywhere; `Modal` dims and centers in its parent. `Modal` and `Popup` return true when the user clicked outside or pressed Escape, so you can close them.
 
 ```go
 if modal && ui.Modal("settings", qui.Style{W: qui.Px(420), Bg: qui.Surface, Radius: 10, Pad: qui.All(16)}, body) {

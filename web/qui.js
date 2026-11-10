@@ -213,6 +213,7 @@ function decode(bytes, length) {
       case Op.Jump: r.u32(); break;
       case Op.Glide: break;
       case Op.Drag: break;
+      case Op.Fixed: node.fixed = true; node.absolute = true; break;
       case Op.Src: node.src = r.str(); break;
       case Op.Fps: node.fps = r.f32(); break;
       case Op.Placeholder: node.placeholder = r.str(); break;
@@ -294,7 +295,7 @@ function css(node, parent) {
   if (node.kind === Kind.Input && wMode === Size.Fit) s += "width:200px;";
 
   if (node.absolute) {
-    s += `position:absolute;left:${node.x}px;top:${node.y}px;`;
+    s += `position:${node.fixed ? "fixed" : "absolute"};left:${node.x}px;top:${node.y}px;`;
     if ((node.kind === Kind.Box || node.kind === Kind.Shader) && !node.hit && !node.scroll && !node.gestures) s += "pointer-events:none;";
     if (wMode === Size.Fill) s += "width:100%;";
     if (hMode === Size.Fill) s += "height:100%;";
