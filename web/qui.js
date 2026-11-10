@@ -44,7 +44,13 @@ const baseCss = `
   font: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .qui-btn:hover { box-shadow: inset 0 0 0 999px var(--qui-Hover); }
 .qui-btn:active { box-shadow: inset 0 0 0 999px var(--qui-Active); }
-.qui-btn:focus-visible, .qui-root [role=switch]:focus-visible, .qui-root [role=slider]:focus-visible { outline: 2px solid var(--qui-Accent); outline-offset: 1px; }
+.qui-btn:focus-visible, .qui-root [role=button]:focus-visible, .qui-root [role=switch]:focus-visible, .qui-root [role=slider]:focus-visible { outline: 2px solid var(--qui-Accent); outline-offset: 1px; }
+.qui-root div[role=button] { cursor: pointer; }
+.qui-root div[role=button]:hover { box-shadow: inset 0 0 0 999px var(--qui-Hover); }
+.qui-root div[role=button]:active { box-shadow: inset 0 0 0 999px var(--qui-Active); }
+.qui-icon { display: block; flex: none; }
+.qui-icon::before { content: ""; position: absolute; inset: var(--qui-inset, 0); background-color: currentColor;
+  -webkit-mask: var(--qui-svg) center / contain no-repeat; mask: var(--qui-svg) center / contain no-repeat; }
 .qui-root [role=menu], .qui-root [role=menuitem] { outline: none; }
 .qui-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .qui-input { display: block; padding: 5px 9px; border: 1px solid var(--qui-Line); border-radius: 6px; background: var(--qui-Inset);
@@ -100,6 +106,7 @@ function decode(bytes, length) {
   let theme = 0;
   const palette = [];
   const images = [];
+  const svgs = [];
   let current = null;
   let propsStart = 0;
   const seal = () => {
@@ -121,6 +128,12 @@ function decode(bytes, length) {
       const data = new Uint8ClampedArray(r.bytes.subarray(r.at, r.at + w * h * 4));
       r.at += w * h * 4;
       images.push([`${hi}:${lo}`, { w, h, data }]);
+      continue;
+    }
+    if (op === Op.SvgData) {
+      const lo = r.u32(), hi = r.u32(), n = r.u32();
+      svgs.push([`${hi}:${lo}`, decoder.decode(r.bytes.subarray(r.at, r.at + n))]);
+      r.at += n;
       continue;
     }
     if (op === Op.ImageFree) {
@@ -217,11 +230,11 @@ function decode(bytes, length) {
       }
       default:
         console.error(`qui: unknown wire op ${op}, dropping the rest of the frame`);
-        return { root, theme, palette, images };
+        return { root, theme, palette, images, svgs };
     }
   }
   seal();
-  return { root, theme, palette, images };
+  return { root, theme, palette, images, svgs };
 }
 
 function sizeCss(mode, value, property) {
@@ -244,6 +257,12 @@ function definiteHeight(node, parent) {
 function css(node, parent) {
   let s = "position:relative;";
   if (node.kind === Kind.Image) s += "display:block;flex:none;";
+  if (node.kind === Kind.Icon) {
+    if (!node.fg) s += "color:var(--qui-Ink);";
+    if (node.pad) s += `--qui-inset:${node.pad[0]}px ${node.pad[1]}px ${node.pad[2]}px ${node.pad[3]}px;`;
+    if ((node.wMode ?? Size.Fit) === Size.Fit) s += "width:20px;";
+    if ((node.hMode ?? Size.Fit) === Size.Fit) s += (node.wMode ?? Size.Fit) === Size.Fit ? "height:20px;" : "aspect-ratio:1;";
+  }
   const row = parent.dir === Dir.Row && parent.kind !== Kind.List;
   const column = parent.dir === Dir.Column && parent.kind !== Kind.List;
   const wMode = node.wMode ?? Size.Fit;
@@ -328,6 +347,7 @@ function tagFor(node) {
   if (node.kind === Kind.Shader || node.kind === Kind.Image) return "canvas";
   if (node.kind === Kind.Input) return node.multiline ? "textarea" : "input";
   if (node.kind === Kind.Text) return node.role === Role.Heading ? "h2" : "span";
+  if (node.kind === Kind.Icon) return "span";
   if (node.role === Role.Main) return "main";
   if (node.role === Role.Nav) return "nav";
   return "div";
@@ -491,6 +511,7 @@ class Patcher {
     this.engineMs = 0;
     this.themeIndex = -1;
     this.images = new Map();
+    this.svgs = new Map();
     this.wake = null;
     this.bind();
   }
@@ -753,7 +774,7 @@ class Patcher {
         if (this.fieldKey(e.target, e, code, mods, shot)) return;
       } else if (e.target.tagName === "BUTTON" && !mods && (code === Key.Enter || code === Key.Space)) {
         return;
-      } else if (e.target.getAttribute?.("role") === "switch" && !mods && (code === Key.Enter || code === Key.Space)) {
+      } else if (/^(switch|button)$/.test(e.target.getAttribute?.("role") ?? "") && !mods && (code === Key.Enter || code === Key.Space)) {
         e.preventDefault();
         e.target.click();
         return;
@@ -837,6 +858,7 @@ class Patcher {
     this.nodes.set(node.key, el);
     if (node.kind === Kind.Button) el.className = "qui-btn";
     if (node.kind === Kind.Text) el.className = "qui-text";
+    if (node.kind === Kind.Icon) el.className = "qui-icon";
     if (node.kind === Kind.Input) {
       el.className = "qui-input";
       if (node.multiline) el.rows = 1;
@@ -985,6 +1007,15 @@ class Patcher {
       if (node.label) el.setAttribute("aria-label", node.label);
       else el.removeAttribute("aria-label");
       if (node.role === Role.Image) el.setAttribute("role", "img");
+      if (node.kind === Kind.Icon) {
+        el.style.setProperty("--qui-svg", this.svgs.get(node.image) ?? "none");
+        if (node.label || node.role) el.removeAttribute("aria-hidden");
+        else el.setAttribute("aria-hidden", "true");
+      }
+      if (node.role === Role.Button && node.kind !== Kind.Button) {
+        el.setAttribute("role", "button");
+        el.tabIndex = 0;
+      }
       if (node.role === Role.Switch || node.role === Role.Slider) {
         el.setAttribute("role", node.role === Role.Switch ? "switch" : "slider");
         el.tabIndex = 0;
@@ -1116,10 +1147,14 @@ class Patcher {
 
   apply(bytes, length) {
     const began = performance.now();
-    const { root, theme, palette, images } = decode(bytes, length);
+    const { root, theme, palette, images, svgs } = decode(bytes, length);
     for (const [id, image] of images) {
       if (image) this.images.set(id, image);
       else this.images.delete(id);
+    }
+    for (const [id, text] of svgs) {
+      const source = /\sxmlns=/.test(text) ? text : text.replace(/<svg\b/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      this.svgs.set(id, `url("data:image/svg+xml,${encodeURIComponent(source)}")`);
     }
     this.setTheme(theme, palette);
     root.dir = Dir.Stack;

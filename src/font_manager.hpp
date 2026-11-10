@@ -107,6 +107,8 @@ class FontManager {
   }
   void clear_pending_uploads() { pending_uploads_.clear(); }
 
+  FT_Library ft_library() const { return library_; }
+
   uint32_t atlas_page_count() const {
     return static_cast<uint32_t>(pages_.size());
   }

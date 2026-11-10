@@ -1,6 +1,6 @@
 package qui
 
-const wireVersion = 18
+const wireVersion = 19
 
 const (
 	opEnd            = 0
@@ -60,6 +60,7 @@ const (
 	opSelect         = 54
 	opWrap           = 55
 	opValue          = 56
+	opSvgData        = 57
 )
 
 const (
@@ -70,6 +71,7 @@ const (
 	kindShader = 4
 	kindInput  = 5
 	kindImage  = 6
+	kindIcon   = 7
 )
 
 const (
@@ -141,6 +143,7 @@ const (
 	RoleSlider   Role = 7
 	RoleMenu     Role = 8
 	RoleMenuItem Role = 9
+	RoleButton   Role = 10
 )
 
 const (

@@ -86,6 +86,7 @@ struct TextStyle {
 };
 
 inline constexpr int32_t kOverlayZ = 1 << 20;
+inline constexpr float kIconSize = 20;
 inline constexpr float kModalMargin = 16;
 
 inline constexpr TextStyle Body{};
@@ -123,6 +124,28 @@ struct Span {
 };
 
 inline constexpr std::string_view kImagePlaceholder = "\xe2\x80\x83\xe2\x80\x82";
+
+// An SVG document drawn as a one-color icon. Declare it once (it can be
+// constexpr) and keep it: the engine receives its text the first time `icon`
+// uses it, and later frames send only its hash. Paths and the basic shapes are
+// drawn with their fills, strokes and transforms; colors are ignored, so
+// anything the document paints takes the icon's color.
+struct Svg {
+  std::string_view text{};
+  uint64_t id = 0;
+
+  constexpr Svg() = default;
+  constexpr explicit Svg(std::string_view svg) : text(svg), id(hash(svg)) {}
+
+  static constexpr uint64_t hash(std::string_view s) {
+    uint64_t h = 0;
+    for (const char c : s) {
+      h ^= static_cast<unsigned char>(c);
+      h *= 1099511628211ull;
+    }
+    return h ? h : 1;
+  }
+};
 
 struct RichResult {
   std::string_view hovered{}, clicked{}, right_clicked{};
@@ -386,6 +409,48 @@ class Ui {
     emit_style(style);
     u8(wire::OpEnd);
     return lookup(id);
+  }
+
+  // Draws an SVG fitted inside w by h, 20px square unless set, in fg (Ink when
+  // unset). With a label it is an image for assistive tech; without one it is
+  // decorative.
+  Response icon(const Svg &svg, Style style = {}) {
+    send_svg(svg);
+    if (!style.klass.empty()) style = resolve_style(style);
+    if (style.w.mode == wire::SizeFit && style.h.mode == wire::SizeFit) style.w = style.h = px(kIconSize);
+    else if (style.h.mode == wire::SizeFit && style.w.mode == wire::SizePx) style.h = style.w;
+    if (!style.label.empty() && !style.role) style.role = RoleImage;
+    const uint64_t id = open(wire::KindIcon, style.key);
+    u8(wire::OpImg);
+    u64(svg.id);
+    emit_style(style);
+    u8(wire::OpEnd);
+    return lookup(id);
+  }
+
+  // A button showing only an icon: 32px square with the icon centered at 20px
+  // unless w and h say otherwise. `label` names it for assistive tech and keys
+  // it unless style.key is set. fg colors the icon; left unset it is Muted, and
+  // Ink while hovered or focused.
+  Response icon_button(const Svg &svg, std::string_view label, Style style = {}) {
+    if (!style.klass.empty()) style = resolve_style(style);
+    if (style.key.empty()) style.key = label;
+    if (style.w.mode == wire::SizeFit) style.w = px(32);
+    if (style.h.mode == wire::SizeFit) style.h = style.w;
+    if (!style.radius) style.radius = 6;
+    style.align = style.justify = Center;
+    style.hit = true;
+    style.role = RoleButton;
+    style.label = label;
+    Color fg = style.fg;
+    if (!fg) {
+      const Response prev = lookup(mix(stack_.back().id, style.key.data(), style.key.size()));
+      fg = prev.hovered || prev.focused ? Ink : Muted;
+    }
+    style.fg = 0;
+    float size = kIconSize;
+    if (style.w.mode == wire::SizePx && style.w.value < kIconSize + 8) size = std::max(style.w.value - 8, 8.f);
+    return row(style, [&] { icon(svg, {.w = px(size), .h = px(size), .fg = fg}); });
   }
 
   // Overlays float above the window. Call them from the root container, after the
@@ -816,6 +881,15 @@ class Ui {
     f32(g.angle);
   }
 
+  void send_svg(const Svg &svg) {
+    if (!svg.id || !sent_svgs_.insert(svg.id).second) return;
+    pending_images_.push_back(wire::OpSvgData);
+    pending_images_.insert(pending_images_.end(), reinterpret_cast<const uint8_t *>(&svg.id), reinterpret_cast<const uint8_t *>(&svg.id) + 8);
+    const auto size = static_cast<uint32_t>(svg.text.size());
+    pending_images_.insert(pending_images_.end(), reinterpret_cast<const uint8_t *>(&size), reinterpret_cast<const uint8_t *>(&size) + 4);
+    pending_images_.insert(pending_images_.end(), svg.text.begin(), svg.text.end());
+  }
+
   void flush_images() {
     if (pending_images_.empty()) return;
     buf_.insert(buf_.begin() + static_cast<std::ptrdiff_t>(image_at_), pending_images_.begin(), pending_images_.end());
@@ -1047,6 +1121,7 @@ class Ui {
   size_t image_at_ = 0;
   std::vector<uint8_t> pending_images_;
   std::unordered_set<uint64_t> loaded_images_;
+  std::unordered_set<uint64_t> sent_svgs_;
   std::vector<std::pair<uint8_t, Color>> palette_;
   std::unordered_map<std::string, Style> style_classes_;
   std::unordered_map<std::string, TextStyle> text_classes_;

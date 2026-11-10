@@ -15,7 +15,8 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | --- | --- |
 | `Frame` | `version:u8 theme:u8` |
 | `ImageData` | `key:u64 w:u16 h:u16` then `w*h*4` bytes of straight RGBA. Sent once per key, directly after `Palette`, and the engine keeps it |
-| `Img` | `key:u64` the image an `Image` node shows |
+| `Img` | `key:u64` the image an `Image` node shows, or the SVG an `Icon` node shows |
+| `SvgData` | `key:u64` then `str` of SVG text. Sent once per key, directly after `Palette` like `ImageData`, and the engine keeps it. `Icon` nodes draw it fitted to their box in their `Fg` (`Ink` when unset), using only the shapes' coverage |
 | `Fit` | `u8`: `Cover` 0, `Contain` 1, `Stretch` 2 |
 | `Span` | `start:u32 end:u32 flags:u8 fg:u32 bg:u32 id:u64 image:u64`, after `Text`. Styles a byte range; `id` non-zero makes it a hit target reported under that id. `flags`: `Bold` 1, `Mono` 2, `Italic` 4, `Underline` 8, `Strike` 16, `Image` 32 (draws the loaded image `image` over the span's placeholder text) |
 | `Jump` | `u32` on a `List`: scrolls that item to the top on this frame only |
@@ -28,6 +29,7 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `Width`, `Height` | `mode:u8 value:f32` |
 | `MinW`, `MaxW`, `MinH`, `MaxH`, `Gap`, `Radius`, `Opacity`, `FontSize`, `Fps` | `f32` |
 | `Value` | `f32`, the state of a `Switch` (0 or 1) or `Slider` (0 to 1) box, for assistive tech |
+| `Role` `Button` | on a `Hit` box: takes focus, clicks on Enter and Space, gets the hover and press tints like a `Button` node, and is role=button on the web |
 | `Pad` | `top:f32 right:f32 bottom:f32 left:f32` |
 | `Align`, `Justify`, `Hit`, `Role`, `Weight` | `u8` |
 | `Gestures` | `u8` mask of `PanX`, `PanY`, `Pinch` and `TouchOnly` |

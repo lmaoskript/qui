@@ -74,6 +74,7 @@ float clamp_size(float value, const float min_value, const float max_value) {
 constexpr float kOverscan = 200;
 constexpr float kDefaultRange = 32;
 constexpr float kInputWidth = 200;
+constexpr float kIconSize = 20;
 
 template <class F>
 void each_child(std::vector<Node> &nodes, const Node &node, F &&visit) {
@@ -226,6 +227,13 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         source.rgba.assign(data.begin(), data.end());
         ++source.version;
       }
+      continue;
+    }
+    if (op == OpSvgData) {
+      const uint64_t key = in.read<uint64_t>();
+      const uint32_t size = in.read<uint32_t>();
+      const std::string_view text = in.bytes(size);
+      if (in.ok() && text.size() == size && !svgs.contains(key)) parse_svg(text, svgs[key]);
       continue;
     }
     if (op == OpImageFree) {
@@ -467,6 +475,8 @@ void Engine::intrinsic_width(Node &node) {
     content = kInputWidth;
   } else if (node.kind == KindImage) {
     if (const auto it = images.find(node.image); it != images.end()) content = static_cast<float>(it->second.w);
+  } else if (node.kind == KindIcon) {
+    content = kIconSize;
   } else if (is_text_leaf(node)) {
     node.font = font_for(node);
     std::string_view rest = node.text;
@@ -616,6 +626,10 @@ void Engine::intrinsic_height(Node &node) {
       const float inner_w = std::max(0.f, node.w - node.pad[1] - node.pad[3]);
       content = inner_w * static_cast<float>(it->second.h) / static_cast<float>(it->second.w);
     }
+  } else if (node.kind == KindIcon) {
+    const auto it = svgs.find(node.image);
+    const float inner_w = std::max(0.f, node.w - node.pad[1] - node.pad[3]);
+    content = it != svgs.end() && it->second.w > 0 ? inner_w * it->second.h / it->second.w : inner_w;
   } else if (is_text_leaf(node) || node.kind == KindInput) {
     wrap(node, std::max(0.f, node.w - node.pad[1] - node.pad[3]));
     const float size = node.font_size > 0 ? node.font_size : kDefaultFontSize;
@@ -1181,7 +1195,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     hit.cy1 = static_cast<float>(clip.y + clip.h) / dpr;
     hit.press = node.hit != 0;
     hit.scroll = node.scroll || node.kind == KindList || (node.kind == KindInput && node.multiline);
-    hit.focusable = node.kind == KindButton || node.kind == KindInput || node.role == RoleSwitch || node.role == RoleSlider || node.role == RoleMenu || node.role == RoleMenuItem;
+    hit.focusable = node.kind == KindButton || node.kind == KindInput || node.role == RoleButton || node.role == RoleSwitch || node.role == RoleSlider || node.role == RoleMenu || node.role == RoleMenuItem;
     hit.scroll_parent = scroll_parent_;
     hit.parent = hit_parent_;
     hit.gestures = node.gestures;
@@ -1234,7 +1248,7 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     add_rect(x0, y0, w, h, fade(resolve(node.bg)), radius, 0, clip);
   }
 
-  if (node.kind == KindButton && (node.id == hovered || node.id == pressed)) {
+  if ((node.kind == KindButton || node.role == RoleButton) && (node.id == hovered || node.id == pressed)) {
     const uint32_t tint = resolve(node.id == pressed ? Active : Hover);
     add_rect(x0, y0, w, h, fade(tint), radius, 0, clip);
   }
@@ -1242,11 +1256,12 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     const uint32_t border = node.kind == KindInput && node.id == ui.focused ? static_cast<uint32_t>(Accent) : node.border;
     add_rect(x0, y0, w, h, fade(resolve(border)), radius, std::max(1.f, std::round(node.border_w * dpr)), clip);
   }
-  if ((node.kind == KindButton || node.role == RoleSwitch || node.role == RoleSlider) && node.id == ui.focused && ui.focus_ring) {
+  if ((node.kind == KindButton || node.role == RoleButton || node.role == RoleSwitch || node.role == RoleSlider) && node.id == ui.focused && ui.focus_ring) {
     add_rect(x0, y0, w, h, fade(resolve(Accent)), radius, std::round(2 * dpr), clip);
   }
 
   if (node.kind == KindImage) paint_image(node, x0, y0, w, h, alpha, radius, clip);
+  if (node.kind == KindIcon) paint_icon(node, x0, y0, w, h, fade(resolve(node.fg ? node.fg : static_cast<uint32_t>(Ink))), clip);
   if (node.kind == KindText && node.select_root >= 0 && !visible.empty()) select_texts_.push_back({index, clip});
   if (is_text_leaf(node)) paint_text(node, alpha, clip);
   if (node.kind == KindInput) paint_input(node, alpha, clip);
@@ -1404,12 +1419,12 @@ std::string Engine::tree_json() const {
     }
     return escaped;
   };
-  static const char *const kinds[] = {"box", "text", "button", "list", "shader", "input"};
+  static const char *const kinds[] = {"box", "text", "button", "list", "shader", "input", "image", "icon"};
   for (size_t i = 1; i < nodes.size(); ++i) {
     const Node &n = nodes[i];
     char buffer[256];
     std::snprintf(buffer, sizeof(buffer), "%s{\"id\":\"%016llx\",\"parent\":%d,\"kind\":\"%s\",\"x\":%.1f,\"y\":%.1f,\"w\":%.1f,\"h\":%.1f",
-                  first ? "" : ",", static_cast<unsigned long long>(n.id), n.parent, kinds[n.kind < 6 ? n.kind : 0], n.x, n.y, n.w, n.h);
+                  first ? "" : ",", static_cast<unsigned long long>(n.id), n.parent, kinds[n.kind < 8 ? n.kind : 0], n.x, n.y, n.w, n.h);
     out += buffer;
     if (n.placeholder_shown) out += ",\"placeholder\":\"" + escape(n.text) + "\"";
     else if (!n.text.empty()) out += ",\"text\":\"" + escape(n.text) + "\"";
@@ -1584,11 +1599,59 @@ const Engine::ImageRegion &Engine::image_region_for(uint64_t key, uint8_t fit, i
 void Engine::evict_image_regions() {
   constexpr uint64_t kInterval = 240, kIdleFrames = 900;
   if (frame_number % kInterval != 0) return;
-  std::erase_if(image_regions, [&](const auto &kv) {
+  const auto idle = [&](const auto &kv) {
     if (frame_number - kv.second.last_used < kIdleFrames) return false;
     if (kv.second.ok) fonts.release_rgba(kv.second.region, kv.second.alloc_w, kv.second.alloc_h);
     return true;
-  });
+  };
+  std::erase_if(image_regions, idle);
+  std::erase_if(icon_regions, idle);
+}
+
+const Engine::ImageRegion &Engine::icon_region(uint64_t key, int box_w, int box_h) {
+  static const ImageRegion none;
+  const auto source = svgs.find(key);
+  if (source == svgs.end() || box_w <= 0 || box_h <= 0 || source->second.w <= 0 || source->second.h <= 0) return none;
+  const SvgIcon &icon = source->second;
+  const float scale = std::min(static_cast<float>(box_w) / icon.w, static_cast<float>(box_h) / icon.h);
+  const int dw = std::clamp(static_cast<int>(std::round(icon.w * scale)), 1, 1024);
+  const int dh = std::clamp(static_cast<int>(std::round(icon.h * scale)), 1, 1024);
+  const uint64_t cache_key = (key * 1099511628211ull) ^ (static_cast<uint64_t>(dw) << 40) ^ (static_cast<uint64_t>(dh) << 20);
+  if (const auto hit = icon_regions.find(cache_key); hit != icon_regions.end() && hit->second.source == key) {
+    hit->second.last_used = frame_number;
+    return hit->second;
+  }
+  std::vector<uint8_t> coverage;
+  rasterize_svg(fonts.ft_library(), icon, dw, dh, coverage);
+  std::vector<uint8_t> pixels(coverage.size() * 4, 255);
+  for (size_t i = 0; i < coverage.size(); ++i) pixels[i * 4 + 3] = coverage[i];
+
+  ImageRegion &region = icon_regions[cache_key];
+  if (region.ok && (region.source != key || region.w != dw || region.h != dh)) {
+    fonts.release_rgba(region.region, region.alloc_w, region.alloc_h);
+    region.ok = false;
+  }
+  if (!region.ok) region.ok = fonts.allocate_rgba(static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), region.region, region.alloc_w, region.alloc_h);
+  region.source = key;
+  region.last_used = frame_number;
+  region.w = dw;
+  region.h = dh;
+  if (region.ok) fonts.write_rgba(region.region, static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), pixels);
+  return region;
+}
+
+void Engine::paint_icon(const Node &node, float x0, float y0, float w, float h, uint32_t color, IRect clip) {
+  if ((color & 0xffu) == 0) return;
+  const float inner_x = x0 + std::round(node.pad[3] * dpr), inner_y = y0 + std::round(node.pad[0] * dpr);
+  const int box_w = static_cast<int>(w - std::round((node.pad[1] + node.pad[3]) * dpr));
+  const int box_h = static_cast<int>(h - std::round((node.pad[0] + node.pad[2]) * dpr));
+  const ImageRegion &region = icon_region(node.image, box_w, box_h);
+  if (!region.ok) return;
+  const float dx = inner_x + static_cast<float>(box_w - region.w) / 2, dy = inner_y + static_cast<float>(box_h - region.h) / 2;
+  const float page_w = static_cast<float>(fonts.page_width(region.region.page)), page_h = static_cast<float>(fonts.page_height(region.region.page));
+  const Instance instance{std::round(dx), std::round(dy), static_cast<float>(region.w), static_cast<float>(region.h),
+                          std::round(region.region.u0 * page_w), std::round(region.region.v0 * page_h), 0, 0, __builtin_bswap32(color), InstGlyph};
+  add_instance(instance, static_cast<int>(region.region.page), clip);
 }
 
 void Engine::paint_image(const Node &node, float x0, float y0, float w, float h, float alpha, float radius, IRect clip) {

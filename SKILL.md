@@ -214,6 +214,17 @@ ui.Image("avatar:42", qui.Style{W: qui.Px(40), H: qui.Px(40), Radius: 20, Clip: 
 
 `LoadImage` sends pixels once under your key, so load them off the render path as they arrive (decode on a thread, then `Wake`). `Image(key, style, fit)` refers to it by key; `FitCover` (default) crops, `FitContain` letterboxes, `FitStretch` distorts; add `| FitPixelated` or `| FitBicubic` to change how it upscales (bilinear by default). With no size it uses the pixel size, with only `W` it keeps the aspect ratio. Radius rounds the corners and a square with `Radius = W/2` is a circle. The engine resamples to the on-screen size and keeps its own copy, so load images near the size you show them. On the web it is a `<canvas>`. C++: `ui.load_image(key, w, h, rgba)`, `ui.has_image(key)`, `ui.image(key, style, fit)`.
 
+## Icons
+
+```go
+var send = qui.NewSvg(`<svg viewBox="0 0 24 24"><path d="M3 20v-6l8-2-8-2V4l19 8z"/></svg>`)
+
+ui.Icon(send, qui.Style{W: qui.Px(18), Fg: qui.Muted})
+if ui.IconButton(send, "Send", qui.Style{}).Clicked { ... }
+```
+
+`NewSvg` once (a package var), then `Icon` each frame: the SVG text goes to the engine the first time and later frames send its hash. It draws one color, `Fg` (`Ink` by default), in a 20px box unless sized (only `W` makes it square); the document's own colors are ignored. Supported: `path` (all commands, `evenodd`), `circle`, `ellipse`, `rect` (with `rx`/`ry`), `line`, `polyline`, `polygon`, `g`, `transform`, `fill="none"`, strokes with width, caps and joins, opacity, and `style="..."` for those properties; gradients, `use`, clip paths, masks and text are skipped. Natively it is rasterized by FreeType at the exact pixel size and cached in the atlas, so it stays sharp at any scale; on the web it is a CSS mask. A `Label` makes it role=img, otherwise it is hidden from assistive tech. `IconButton(svg, label, style)` is a 32px focusable button (role=button) with a 20px icon, Muted and Ink on hover unless `Fg` is set; `Role: qui.RoleButton` on any `Hit` box gives the same keyboard, hover and accessibility behaviour to a custom button such as icon plus text. C++: `constexpr qui::Svg send{R"(<svg ...>)"};`, `ui.icon(send, style)`, `ui.icon_button(send, label, style)`.
+
 ## Rich text
 
 ```go

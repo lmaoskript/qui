@@ -1,6 +1,7 @@
 #pragma once
 
 #include "font_manager.hpp"
+#include "svg.hpp"
 #include "system_fonts.hpp"
 #include "text_shaper.hpp"
 #include "wire.gen.hpp"
@@ -328,6 +329,10 @@ class Engine {
   const ImageRegion &image_region_for(uint64_t key, uint8_t fit, int box_w, int box_h);
   void evict_image_regions();
   void paint_image(const Node &node, float x0, float y0, float w, float h, float alpha, float radius, IRect clip);
+  std::unordered_map<uint64_t, SvgIcon> svgs;
+  std::unordered_map<uint64_t, ImageRegion> icon_regions;
+  const ImageRegion &icon_region(uint64_t key, int box_w, int box_h);
+  void paint_icon(const Node &node, float x0, float y0, float w, float h, uint32_t color, IRect clip);
   std::array<uint32_t, 256> palette{};
   std::bitset<256> palette_set;
   float dpr = 1;

@@ -165,6 +165,7 @@ type Ui struct {
 	imageAt     int
 	pendingImgs []byte
 	sentImages  map[uint64]struct{}
+	sentSvgs    map[uint64]struct{}
 
 	styleClasses map[string]Style
 	textClasses  map[string]TextStyle
