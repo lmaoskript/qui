@@ -1672,7 +1672,7 @@ struct qui_app {
     if (engine.menu_open != menu_open) {
       menu_open = engine.menu_open;
       if (menu_open) menu_return = focused;
-      else engine.focus_request = std::exchange(menu_return, 0);
+      else if (const uint64_t back = std::exchange(menu_return, 0); !engine.focus_request) engine.focus_request = back;
     }
     if (engine.focus_request) {
       set_focus(engine.focus_request, false);
