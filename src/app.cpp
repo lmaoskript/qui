@@ -675,6 +675,7 @@ struct qui_app {
         if (submit) {
           state.submitted = true;
           dirty = true;
+          if (!state.multiline && sdl_ready && SDL_HasScreenKeyboardSupport()) set_focus(0, false);
         } else {
           insert_text(state, "\n", EditKind::Other);
         }
