@@ -511,14 +511,15 @@ class Ui {
 
   // Overlays float above the window. Call them from the root container, after the
   // content they cover. modal and popup return true when the user clicked outside
-  // or pressed Escape, the cue to close them.
+  // or pressed Escape, the cue to close them. A press that drifts a few pixels
+  // before release still counts as a click outside.
   template <class F>
   bool modal(std::string_view key, Style panel, F &&body) {
     bool dismissed = false;
     const std::string scrim_key = std::string(key) + "/scrim", panel_key = std::string(key) + "/panel";
     stack({.w = fill(), .h = fill(), .align = Center, .justify = Center, .absolute = true, .z = kOverlayZ, .key = key}, [&] {
       const Response scrim = column({.w = fill(), .h = fill(), .absolute = true, .bg = Scrim, .hit = true, .key = scrim_key}, [] {});
-      if (scrim.clicked) dismissed = true;
+      if (scrim.clicked || scrim.drag_end) dismissed = true;
       panel.hit = true;
       panel.select = true;
       if (panel.key.empty()) panel.key = panel_key;
@@ -537,7 +538,7 @@ class Ui {
     if (x < 0) x = 0;
     stack({.w = fill(), .h = fill(), .z = kOverlayZ, .key = key, .fixed = true}, [&] {
       const Response catcher = column({.w = fill(), .h = fill(), .absolute = true, .hit = true, .key = catcher_key}, [] {});
-      if (catcher.clicked || catcher.right_clicked) dismissed = true;
+      if (catcher.clicked || catcher.right_clicked || catcher.drag_end) dismissed = true;
       panel.absolute = true;
       panel.x = x;
       panel.y = y;

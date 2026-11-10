@@ -17,7 +17,7 @@ func (u *Ui) Modal(key string, panel Style, body func()) bool {
 	dismissed := false
 	u.Stack(Style{Key: key, Absolute: true, W: Fill(), H: Fill(), Z: overlayZ, Align: Center, Justify: Center}, func() {
 		scrim := u.Column(Style{Key: key + "/scrim", Absolute: true, W: Fill(), H: Fill(), Bg: Scrim, Hit: true}, func() {})
-		if scrim.Clicked {
+		if scrim.Clicked || scrim.DragEnd {
 			dismissed = true
 		}
 		panel.Hit = true
@@ -53,7 +53,7 @@ func (u *Ui) Popup(key string, x, y float32, panel Style, body func()) bool {
 	}
 	u.Stack(Style{Key: key, Fixed: true, W: Fill(), H: Fill(), Z: overlayZ}, func() {
 		catcher := u.Column(Style{Key: key + "/catcher", Absolute: true, W: Fill(), H: Fill(), Hit: true}, func() {})
-		if catcher.Clicked || catcher.RightClicked {
+		if catcher.Clicked || catcher.RightClicked || catcher.DragEnd {
 			dismissed = true
 		}
 		panel.Absolute, panel.X, panel.Y, panel.Hit, panel.Select = true, x, y, true, true
