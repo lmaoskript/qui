@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
@@ -12,6 +13,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -235,6 +237,7 @@ struct Menu {
   int active = 0, hovered = 0, confirm = 0;
   // Latched on the first frame: 1 for a popup, 2 for a sheet.
   uint8_t mode = 0;
+  float header_h = 0;
 
   void show(float at_x, float at_y) { *this = {.open = true, .x = at_x, .y = at_y}; }
 };
@@ -670,8 +673,11 @@ class Ui {
   // itself on a choice, a press outside it and Escape. The arrow keys, Home and
   // End move through the items, Enter and Space choose, and focus returns to
   // where it was when the menu closes. Without a klass, unset panel fields get
-  // the defaults.
-  int menu(Menu &m, std::span<const MenuItem> items, Style s = {}) {
+  // the defaults. A header body, when given, is drawn above the rows.
+  int menu(Menu &m, std::span<const MenuItem> items, Style s = {}) { return menu(m, items, s, nullptr); }
+
+  template <class F>
+  int menu(Menu &m, std::span<const MenuItem> items, Style s, F &&header) {
     if (!m.open || items.empty()) return -1;
     if (!m.mode) m.mode = pointer_touch() && width() < kSheetBelow ? 2 : 1;
     const bool as_sheet = m.mode == 2;
@@ -699,15 +705,23 @@ class Ui {
     else if (key_pressed(KeyHome)) m.active = 1;
     else if (key_pressed(KeyEnd)) m.active = count;
 
-    float panel_h = static_cast<float>(count) * row_height + static_cast<float>(count - 1) * s.gap + s.pad.top + s.pad.bottom;
+    const float header_h = m.header_h > 0 ? m.header_h + s.gap : 0;
+    float panel_h = header_h + static_cast<float>(count) * row_height + static_cast<float>(count - 1) * s.gap + s.pad.top + s.pad.bottom;
     if (const float limit = as_sheet ? height() - kSheetTop : height() - 2 * margin; panel_h > limit) {
       panel_h = s.max_h = limit;
       s.scroll = true;
-      if (m.active != before) s.scroll_to = std::max(0.f, static_cast<float>(m.active - 1) * (row_height + s.gap) - (panel_h - row_height) / 2);
+      if (m.active != before) s.scroll_to = std::max(0.f, header_h + static_cast<float>(m.active - 1) * (row_height + s.gap) - (panel_h - row_height) / 2);
     }
     int chosen = -1, hovered = 0;
     const auto rows = [&] {
       if (m.active == 0) u8_op(wire::OpFocus, 2);
+      if constexpr (!std::is_same_v<std::decay_t<F>, std::nullptr_t>) {
+        const Response drawn = column({.w = fill(), .hit = true}, header);
+        if (drawn.found && drawn.h != m.header_h) {
+          m.header_h = drawn.h;
+          wake();
+        }
+      }
       for (int i = 0; i < count; ++i) {
         const MenuItem &item = items[static_cast<size_t>(i)];
         const int position = i + 1;

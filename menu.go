@@ -24,7 +24,8 @@ type Menu struct {
 	// Row positions are index+1, so 0 means none.
 	active, hovered, confirm int
 	// Latched on the first frame: 1 for a popup, 2 for a sheet.
-	mode uint8
+	mode    uint8
+	headerH float32
 }
 
 // Show opens the menu at x, y, usually PointerX and PointerY.
@@ -39,6 +40,12 @@ func (m *Menu) Show(x, y float32) {
 // narrow window, it shows as a Sheet with taller rows. Panel restyles the
 // menu; without a Class, unset fields get the defaults.
 func (u *Ui) Menu(m *Menu, items []MenuItem, panel ...Style) int {
+	return u.MenuWithHeader(m, items, nil, panel...)
+}
+
+// MenuWithHeader is Menu with header drawn above the rows, such as a row of
+// quick actions. A nil header draws nothing.
+func (u *Ui) MenuWithHeader(m *Menu, items []MenuItem, header func(), panel ...Style) int {
 	if !m.Open || len(items) == 0 {
 		return -1
 	}
@@ -87,11 +94,15 @@ func (u *Ui) Menu(m *Menu, items []MenuItem, panel ...Style) int {
 		m.active = count
 	}
 
-	height := float32(count)*rowHeight + float32(count-1)*s.Gap + s.Pad.Top + s.Pad.Bottom
+	var headerH float32
+	if m.headerH > 0 {
+		headerH = m.headerH + s.Gap
+	}
+	height := headerH + float32(count)*rowHeight + float32(count-1)*s.Gap + s.Pad.Top + s.Pad.Bottom
 	if height > limit {
 		height, s.MaxH, s.Scroll = limit, limit, true
 		if m.active != before {
-			target := max(0, float32(m.active-1)*(rowHeight+s.Gap)-(height-rowHeight)/2)
+			target := max(0, headerH+float32(m.active-1)*(rowHeight+s.Gap)-(height-rowHeight)/2)
 			s.ScrollTo = &target
 		}
 	}
@@ -100,6 +111,12 @@ func (u *Ui) Menu(m *Menu, items []MenuItem, panel ...Style) int {
 	rows := func() {
 		if m.active == 0 {
 			u.u8Op(opFocus, 2)
+		}
+		if header != nil {
+			if drawn := u.Column(Style{W: Fill(), Hit: true}, header); drawn.Found && drawn.H != m.headerH {
+				m.headerH = drawn.H
+				u.Wake()
+			}
 		}
 		for i, item := range items {
 			position := i + 1

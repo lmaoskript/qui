@@ -111,7 +111,7 @@ On the web, `Role` picks the element (`RoleHeading` h2, `RoleLink` a, `RoleMain`
 
 Controls: `if ui.Switch("sounds", on, "Sounds") { on = !on }` and `vol = ui.Slider("volume", vol, qui.Px(160), "Volume")` (0 to 1). Both take Tab focus, work from the keyboard (Space, arrows, Home, End) and are role=switch / role=slider on the web. C++: `ui.toggle_switch(key, on, label)`, `ui.slider(key, value, w, label)`.
 
-Context menus: keep a `qui.Menu` in app state, call `a.menu.Show(ui.PointerX(), ui.PointerY())` on a right click, and each frame `switch ui.Menu(&a.menu, []qui.MenuItem{{Label: "Copy"}, {Label: "Delete", Danger: true, Confirm: "Press again"}}) { case 0: ... }` (-1 when nothing was chosen). It stays on screen, takes the arrows, Home, End, Enter and Space, closes on Escape or a press outside, and hands focus back. Opened by touch on a window under 600 wide, it shows as a full-width `Sheet`. C++: `ui.menu(m, items, panel_style)`, `m.show(x, y)`.
+Context menus: keep a `qui.Menu` in app state, call `a.menu.Show(ui.PointerX(), ui.PointerY())` on a right click, and each frame `switch ui.Menu(&a.menu, []qui.MenuItem{{Label: "Copy"}, {Label: "Delete", Danger: true, Confirm: "Press again"}}) { case 0: ... }` (-1 when nothing was chosen). It stays on screen, takes the arrows, Home, End, Enter and Space, closes on Escape or a press outside, and hands focus back. Opened by touch on a window under 600 wide, it shows as a full-width `Sheet`. `ui.MenuWithHeader(&a.menu, items, header)` draws `header` above the rows, such as quick actions. C++: `ui.menu(m, items, panel_style)` or `ui.menu(m, items, panel_style, header)`, `m.show(x, y)`.
 
 ## Text input and keys
 
