@@ -270,13 +270,15 @@ bool emoji_presentation(uint32_t codepoint) {
 }  // namespace
 
 FontInstanceId FontManager::font_for_codepoint(FontInstanceId preferred,
-                                                uint32_t codepoint) {
+                                                uint32_t codepoint, bool emoji) {
   if (!valid_font(preferred) || codepoint > 0x10ffff)
     return preferred;
-  if (has_codepoint(preferred, codepoint))
+  if (has_codepoint(preferred, codepoint) &&
+      (!emoji || FT_HAS_COLOR(fonts_[preferred - 1]->face)))
     return preferred;
 
-  const uint64_t key = (static_cast<uint64_t>(preferred) << 32) | codepoint;
+  const uint64_t key = (static_cast<uint64_t>(preferred) << 32) | codepoint |
+                       (emoji ? 0x80000000u : 0u);
   const auto cached = fallback_fonts_.find(key);
   if (cached != fallback_fonts_.end())
     return cached->second;
@@ -285,19 +287,20 @@ FontInstanceId FontManager::font_for_codepoint(FontInstanceId preferred,
   const bool ligatures_enabled = fonts_[preferred - 1]->ligatures_enabled;
   const bool subpixel_text = fonts_[preferred - 1]->subpixel;
   FontInstanceId result = 0;
-  for (const SystemFont &font : fallback_fonts(codepoint, emoji_presentation(codepoint))) {
+  for (const SystemFont &font : fallback_fonts(codepoint, emoji || emoji_presentation(codepoint))) {
     if (font.path.empty())
       continue;
     const FontInstanceId candidate =
         load_font_face(font.path, font.index, pixel_size, ligatures_enabled,
                        subpixel_text, font.weight);
-    if (candidate && has_codepoint(candidate, codepoint)) {
+    if (candidate && has_codepoint(candidate, codepoint) &&
+        (!emoji || FT_HAS_COLOR(fonts_[candidate - 1]->face))) {
       result = candidate;
       break;
     }
   }
   if (!result)
-    result = preferred;
+    result = emoji ? font_for_codepoint(preferred, codepoint) : preferred;
   fallback_fonts_[key] = result;
   return result;
 }

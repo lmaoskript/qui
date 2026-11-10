@@ -241,8 +241,9 @@ bool resolve_levels(std::string_view text, std::vector<uint8_t> &levels) {
 
 bool joins_previous_font(uint32_t codepoint) {
   return codepoint == 0x200d || codepoint == 0xfe0e ||
-         codepoint == 0xfe0f ||
-         (codepoint >= 0x1f3fb && codepoint <= 0x1f3ff);
+         codepoint == 0xfe0f || codepoint == 0x20e3 ||
+         (codepoint >= 0x1f3fb && codepoint <= 0x1f3ff) ||
+         (codepoint >= 0xe0020 && codepoint <= 0xe007f);
 }
 
 }  // namespace
@@ -486,10 +487,14 @@ const ShapedLine &TextShaper::shape_from_runs(std::string_view utf8) {
         position = character.end;
         continue;
       }
+      const uint32_t next = character.end < run.end
+                                ? decode_utf8(utf8, character.end, run.end).codepoint
+                                : 0;
       const FontInstanceId character_font =
           joins_previous_font(character.codepoint) && position > segment_start
               ? segment_font
-              : fonts_.font_for_codepoint(run.font, character.codepoint);
+              : fonts_.font_for_codepoint(run.font, character.codepoint,
+                                          next == 0xfe0f || next == 0x20e3);
       const uint8_t character_level = level_at(position);
       if (position > segment_start && (character_font != segment_font ||
                                        character_level != segment_level)) {

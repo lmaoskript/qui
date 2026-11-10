@@ -85,8 +85,10 @@ class FontManager {
   const FontMetrics *metrics(FontInstanceId id) const;
   const std::string *font_path(FontInstanceId id) const;
   bool has_codepoint(FontInstanceId font, uint32_t codepoint) const;
+  // emoji asks for a color font even when preferred covers the codepoint, for
+  // a base character that a variation selector or keycap turns into an emoji.
   FontInstanceId font_for_codepoint(FontInstanceId preferred,
-                                    uint32_t codepoint);
+                                    uint32_t codepoint, bool emoji = false);
 
   bool subpixel(FontInstanceId id) const;
   const CachedGlyph *get_glyph(FontInstanceId font, uint32_t glyph_id,
