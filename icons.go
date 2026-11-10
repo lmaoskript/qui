@@ -87,7 +87,7 @@ func (u *Ui) IconButton(svg Svg, label string, s Style) Response {
 	fg := s.Fg
 	if fg == 0 {
 		fg = Muted
-		if prev := u.peek(s.Key); prev.Hovered || prev.Focused {
+		if prev := u.Peek(s.Key); prev.Hovered || prev.Focused {
 			fg = Ink
 		}
 	}
@@ -99,8 +99,8 @@ func (u *Ui) IconButton(svg Svg, label string, s Style) Response {
 	return u.Row(s, func() { u.Icon(svg, Style{W: Px(size), H: Px(size), Fg: fg, Ease: s.Ease}) })
 }
 
-// peek returns last frame's Response for the keyed node about to be opened in
-// the current scope.
-func (u *Ui) peek(key string) Response {
+// Peek returns last frame's Response for the node with this key in the
+// current scope, so a style can depend on hover before the node is built.
+func (u *Ui) Peek(key string) Response {
 	return u.lookup(mixString(u.stack[len(u.stack)-1].id, key))
 }

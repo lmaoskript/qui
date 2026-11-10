@@ -91,7 +91,7 @@ A strict flexbox subset that maps directly to CSS.
 
 `TextStyle` fields, in order: `Size Bold Mono Ellipsis Color W Align Role Gradient Tracking Class`. Presets: `Body H1 H2 Small Code`.
 
-`Response` fields: `Found Hovered Pressed Clicked RightClicked Focused DragStart Dragging DragEnd Changed Submitted LongPressed DoubleTapped PanStart Panning PanEnd Pinching X Y W H DX DY VX VY Scale Swipe First Count Error`
+`Response` fields: `Found Hovered Pressed Clicked RightClicked Focused DragStart Dragging DragEnd Changed Submitted LongPressed DoubleTapped PanStart Panning PanEnd Pinching X Y W H DX DY VX VY Scale Swipe First Count Error`. `ui.Peek(key)` returns last frame's `Response` for a keyed node before you build it, to style it by its hover (C++ `peek`).
 
 Frame info: `Width Height Dpr Dt PointerX PointerY PointerDown`. `Stats()` gives `Nodes WireBytes EngineMs` for the last frame.
 

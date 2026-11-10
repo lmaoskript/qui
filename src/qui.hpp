@@ -290,6 +290,10 @@ class Ui {
   // Makes drawers, ease and tween snap instead of animating.
   void set_reduce_motion(bool on) { reduce_motion_ = on; }
 
+  // Last frame's Response for the node with this key in the current scope, so
+  // a style can depend on hover before the node is built.
+  Response peek(std::string_view key) const { return lookup(mix(stack_.back().id, key.data(), key.size())); }
+
   // Eases toward target over ms milliseconds and returns this frame's value,
   // for what Style::ease does not animate, such as a size or a position. Call
   // it once per frame per key. The first call, and a call after a frame
@@ -478,7 +482,7 @@ class Ui {
     style.label = label;
     Color fg = style.fg;
     if (!fg) {
-      const Response prev = lookup(mix(stack_.back().id, style.key.data(), style.key.size()));
+      const Response prev = peek(style.key);
       fg = prev.hovered || prev.focused ? Ink : Muted;
     }
     style.fg = 0;
