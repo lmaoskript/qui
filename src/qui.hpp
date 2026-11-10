@@ -552,18 +552,25 @@ class Ui {
   // Shows `text` beside the pointer while `show` is true, usually a response's hovered.
   void tooltip(bool show, std::string_view text, Style style = {}) {
     if (!show || text.empty()) return;
-    style.fixed = true;
-    style.x = pointer_x() + 12;
-    style.y = pointer_y() + 16;
-    style.z = kOverlayZ + 1;
-    if (style.x + 200 > width()) style.x = pointer_x() - 212;
+    constexpr float wrap_w = 280, wrap_h = 160;
+    Style wrap{.w = px(wrap_w), .h = px(wrap_h), .z = kOverlayZ + 1, .key = "qui/tooltip/wrap", .fixed = true};
+    wrap.x = pointer_x() + 12;
+    wrap.y = pointer_y() + 16;
+    if (wrap.x + wrap_w > width()) {
+      wrap.x = pointer_x() - 12 - wrap_w;
+      wrap.align = qui::End;
+    }
+    if (wrap.y + wrap_h > height()) {
+      wrap.y = pointer_y() - 16 - wrap_h;
+      wrap.justify = qui::End;
+    }
     if (!style.bg) style.bg = Raised;
     if (!style.border) style.border = Line;
     if (!style.radius) style.radius = 6;
     if (!style.pad.top && !style.pad.right && !style.pad.bottom && !style.pad.left) style.pad = {4, 8};
     style.max_w = 280;
     style.key = "qui/tooltip";
-    column(style, [&] { text_impl(text, {}, {.size = 12, .color = Ink}); });
+    column(wrap, [&] { column(style, [&] { text_impl(text, {}, {.size = 12, .color = Ink}); }); });
   }
 
   Response button(std::string_view label, Style style = {}) {

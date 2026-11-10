@@ -75,9 +75,13 @@ func (u *Ui) Tooltip(show bool, text string, style ...Style) {
 	if len(style) > 0 {
 		s = style[0]
 	}
-	s.Fixed, s.X, s.Y, s.Z = true, u.PointerX()+12, u.PointerY()+16, overlayZ+1
-	if s.X+200 > u.Width() {
-		s.X = u.PointerX() - 212
+	const wrapW, wrapH = 280, 160
+	wrap := Style{Fixed: true, X: u.PointerX() + 12, Y: u.PointerY() + 16, Z: overlayZ + 1, W: Px(wrapW), H: Px(wrapH), Key: "qui/tooltip/wrap"}
+	if wrap.X+wrapW > u.Width() {
+		wrap.X, wrap.Align = u.PointerX()-12-wrapW, End
+	}
+	if wrap.Y+wrapH > u.Height() {
+		wrap.Y, wrap.Justify = u.PointerY()-16-wrapH, End
 	}
 	if s.Bg == 0 {
 		s.Bg = Raised
@@ -93,5 +97,7 @@ func (u *Ui) Tooltip(show bool, text string, style ...Style) {
 	}
 	s.MaxW = 280
 	s.Key = "qui/tooltip"
-	u.Column(s, func() { u.Text(text, TextStyle{Size: 12, Color: Ink}) })
+	u.Column(wrap, func() {
+		u.Column(s, func() { u.Text(text, TextStyle{Size: 12, Color: Ink}) })
+	})
 }
