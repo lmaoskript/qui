@@ -61,6 +61,9 @@ type Style struct {
 	// HoverBg replaces Bg while the pointer is over the box or anything in
 	// it, without waiting a frame.
 	HoverBg Color
+	// Drag makes the box move the window when pressed outside the hit boxes
+	// inside it, as a title bar does. Native desktop only; see SetBorderless.
+	Drag bool
 }
 
 type TextStyle struct {
@@ -646,6 +649,9 @@ func (u *Ui) emitStyle(s *Style) {
 	}
 	if s.HoverBg != 0 {
 		u.u32Op(opHoverBg, uint32(s.HoverBg))
+	}
+	if s.Drag {
+		u.u8(opDrag)
 	}
 	if s.Wrap {
 		u.u8(opWrap)

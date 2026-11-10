@@ -13,6 +13,10 @@ typedef struct qui_app qui_app;
  * match the basename of the app's .desktop file. */
 void qui_set_app_id(const char *id);
 
+/* Opens the window without the system title bar and border. Call before
+ * qui_open. Boxes with the Drag style move it; the edges still resize it. */
+void qui_set_borderless(int on);
+
 qui_app *qui_open(const char *title, int width, int height);
 void qui_close(qui_app *app);
 
@@ -39,6 +43,13 @@ int qui_files_hovering(qui_app *app);
 
 /* Puts UTF-8 text on the system clipboard. */
 void qui_set_clipboard(qui_app *app, const char *text);
+
+/* 0 minimizes the window, 1 maximizes or restores it, 2 closes it as its
+ * close button would. */
+void qui_window_action(qui_app *app, int action);
+
+/* Whether the window is maximized. */
+int qui_window_maximized(qui_app *app);
 
 /* Eases mouse wheel steps toward their target instead of jumping. Off by
  * default. */

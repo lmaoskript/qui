@@ -80,6 +80,9 @@ struct Style {
   // Replaces bg while the pointer is over the box or anything in it, without
   // waiting a frame.
   Color hover_bg = 0;
+  // Moves the window when pressed outside the hit boxes inside it, as a title
+  // bar does. Native desktop only; see set_borderless.
+  bool drag = false;
 };
 
 struct TextStyle {
@@ -235,6 +238,10 @@ struct DrawerOptions {
 };
 
 inline void set_app_id(const char *id) { qui_set_app_id(id); }
+// Call before creating the Ui: the window has no system title bar or border.
+// Mark the title bar with Style::drag and draw your own window buttons; the
+// edges still resize it.
+inline void set_borderless(bool on) { qui_set_borderless(on ? 1 : 0); }
 
 class Ui {
  public:
@@ -289,6 +296,11 @@ class Ui {
   std::string selected_text() const { return qui_selected_text(app_); }
   // Eases mouse wheel steps. Browsers smooth the wheel themselves.
   void set_smooth_scroll(bool on) { qui_set_smooth_scroll(app_, on ? 1 : 0); }
+  void minimize_window() { qui_window_action(app_, 0); }
+  void toggle_maximized() { qui_window_action(app_, 1); }
+  // Closes the window as its close button would, ending the frame loop.
+  void close_window() { qui_window_action(app_, 2); }
+  bool window_maximized() const { return qui_window_maximized(app_) != 0; }
   // Makes drawers, ease and tween snap instead of animating.
   void set_reduce_motion(bool on) { reduce_motion_ = on; }
 
@@ -1026,6 +1038,7 @@ class Ui {
     if (!s.opacity) s.opacity = b.opacity;
     if (!s.ease) s.ease = b.ease;
     if (!s.hover_bg) s.hover_bg = b.hover_bg;
+    s.drag |= b.drag;
     if (!s.gradient.from && !s.gradient.to) s.gradient = b.gradient;
     if (!s.shadow.color) s.shadow = b.shadow;
     s.clip |= b.clip;
@@ -1089,6 +1102,7 @@ class Ui {
     if (s.no_select) u8(wire::OpNoSelect);
     if (s.ease && !reduce_motion_) f32_op(wire::OpEase, s.ease);
     if (s.hover_bg) u32_op(wire::OpHoverBg, s.hover_bg);
+    if (s.drag) u8(wire::OpDrag);
     if (s.wrap) u8(wire::OpWrap);
     if (s.gestures) u8_op(wire::OpGestures, s.gestures);
     if (s.role) u8_op(wire::OpRole, s.role);

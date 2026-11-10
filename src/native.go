@@ -28,6 +28,14 @@ func SetAppID(id string) {
 	C.qui_set_app_id(cid)
 }
 
+func SetBorderless(on bool) {
+	v := C.int(0)
+	if on {
+		v = 1
+	}
+	C.qui_set_borderless(v)
+}
+
 func Open(title string, width, height int) *App {
 	ctitle := C.CString(title)
 	defer C.free(unsafe.Pointer(ctitle))
@@ -63,6 +71,10 @@ func (a *App) SetClipboard(text string) {
 }
 
 func (a *App) FilesHovering() bool { return C.qui_files_hovering(a.app) != 0 }
+
+func (a *App) WindowAction(action int) { C.qui_window_action(a.app, C.int(action)) }
+
+func (a *App) WindowMaximized() bool { return C.qui_window_maximized(a.app) != 0 }
 
 func (a *App) SelectedText() string { return C.GoString(C.qui_selected_text(a.app)) }
 

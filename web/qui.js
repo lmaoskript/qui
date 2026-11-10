@@ -46,7 +46,7 @@ const baseCss = `
 .qui-btn:active { box-shadow: inset 0 0 0 999px var(--qui-Active); }
 .qui-btn:focus-visible, .qui-root [role=button]:focus-visible, .qui-root [role=switch]:focus-visible, .qui-root [role=slider]:focus-visible { outline: 2px solid var(--qui-Accent); outline-offset: 1px; }
 .qui-root div[role=button] { cursor: pointer; }
-.qui-root div[role=button]:hover { box-shadow: inset 0 0 0 999px var(--qui-Hover); }
+.qui-root div[role=button]:not(.qui-hoverbg):hover { box-shadow: inset 0 0 0 999px var(--qui-Hover); }
 .qui-root div[role=button]:active { box-shadow: inset 0 0 0 999px var(--qui-Active); }
 .qui-icon { display: block; flex: none; }
 .qui-icon::before { content: ""; position: absolute; inset: var(--qui-inset, 0); background-color: currentColor;
@@ -212,6 +212,7 @@ function decode(bytes, length) {
       case Op.Prepend: node.prepend = r.u32(); break;
       case Op.Jump: r.u32(); break;
       case Op.Glide: break;
+      case Op.Drag: break;
       case Op.Src: node.src = r.str(); break;
       case Op.Fps: node.fps = r.f32(); break;
       case Op.Placeholder: node.placeholder = r.str(); break;

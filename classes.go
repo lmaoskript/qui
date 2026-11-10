@@ -145,6 +145,7 @@ func (s Style) fill(b Style) Style {
 	s.Hit = s.Hit || b.Hit
 	s.Select = s.Select || b.Select
 	s.NoSelect = s.NoSelect || b.NoSelect
+	s.Drag = s.Drag || b.Drag
 	s.Wrap = s.Wrap || b.Wrap
 	if s.Gestures == 0 {
 		s.Gestures = b.Gestures

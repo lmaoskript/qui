@@ -12,6 +12,20 @@ type platform struct {
 // basename of the app's .desktop file.
 func SetAppID(id string) { native.SetAppID(id) }
 
+// SetBorderless opens the window without the system title bar and border.
+// Call it before Open. Mark the title bar with Style.Drag and draw your own
+// window buttons; the edges still resize it.
+func SetBorderless(on bool) { native.SetBorderless(on) }
+
+func (u *Ui) MinimizeWindow()  { u.app.WindowAction(0) }
+func (u *Ui) ToggleMaximized() { u.app.WindowAction(1) }
+
+// CloseWindow closes the window as its close button would, so Frame returns
+// false.
+func (u *Ui) CloseWindow() { u.app.WindowAction(2) }
+
+func (u *Ui) WindowMaximized() bool { return u.app.WindowMaximized() }
+
 // Open creates the app window. Call it from the main goroutine.
 func Open(title string, width, height int) *Ui {
 	u := newUi()

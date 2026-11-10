@@ -48,7 +48,8 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `Select` | none: starts a selection root, so a mouse selection that begins inside stays inside. The frame root is one, so all text is selectable unless turned off |
 | `NoSelect` | none: no text selection in this subtree until a `Select` below. Boxes with role `Button`, `Menu`, `MenuItem`, `Switch` or `Slider` behave as if they had it |
 | `Ease` | `f32` milliseconds: changes to `Bg`, `Fg`, `Border`, `Radius`, `Opacity` and the button hover tint animate (ease-out cubic) instead of jumping. State is kept per node id; a node absent for a frame starts fresh. On the web it is a CSS `transition` |
-| `HoverBg` | `color:u32`: the background while the pointer is over this box or any hit inside it. On the web it is `:hover` |
+| `HoverBg` | `color:u32`: the background while the pointer is over this box or any hit inside it, in place of a button's hover tint. On the web it is `:hover` |
+| `Drag` | none: a press on this box, outside the hit boxes inside it, moves the window. Native desktop only; it is for windows opened borderless (`qui_set_borderless`) |
 | `Bare` | none, on an `Input` directly after `Open`: clears its default background and border, so a focused field shows no accent border |
 | `Label`, `Text`, `Src`, `Placeholder` | `str` |
 | `Virtual` | `count:u32 estimate:f32 bottom:u8` |

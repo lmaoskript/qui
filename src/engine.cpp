@@ -372,6 +372,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpPrepend: node.prepend = in.read<uint32_t>(); break;
       case OpJump: node.jump = in.read<uint32_t>(); node.has_jump = true; break;
       case OpGlide: node.glide = true; break;
+      case OpDrag: node.drag = true; break;
       case OpSrc: node.src = in.str(); break;
       case OpFps: node.fps = in.read<float>(); break;
       case OpPlaceholder: node.placeholder = in.str(); break;
@@ -1253,7 +1254,7 @@ Engine::EaseValues Engine::ease(const Node &node, const EaseValues &target) {
 void Engine::paint_node(int index, float opacity, IRect clip) {
   Node &node = nodes[static_cast<size_t>(index)];
   const uint64_t hovered = ui.hovered, pressed = ui.pressed;
-  uint32_t tint = (node.kind == KindButton || node.role == RoleButton) && (node.id == hovered || node.id == pressed) ? resolve(node.id == pressed ? Active : Hover) : 0;
+  uint32_t tint = (node.kind == KindButton || node.role == RoleButton) && (node.id == pressed || (node.id == hovered && !node.hover_bg)) ? resolve(node.id == pressed ? Active : Hover) : 0;
   if (node.hover_bg && std::find(hover_chain_.begin(), hover_chain_.end(), node.id) != hover_chain_.end()) node.bg = node.hover_bg;
   if (node.ease > 0 && index != 0) {
     const EaseValues now = ease(node, {resolve(node.bg), resolve(node.border), resolve(node.fg), tint, node.radius, node.opacity});
@@ -1300,6 +1301,11 @@ void Engine::paint_node(int index, float opacity, IRect clip) {
     hits.push_back(hit);
     own_hit = static_cast<int32_t>(hits.size()) - 1;
     if (hit.scroll) own_scroll = own_hit;
+  }
+
+  if (node.drag && !visible.empty()) {
+    const IRect area = intersect(bounds, clip);
+    drags.push_back({node.id, static_cast<float>(area.x) / dpr, static_cast<float>(area.y) / dpr, static_cast<float>(area.w) / dpr, static_cast<float>(area.h) / dpr});
   }
 
   const float radius = node.radius * dpr;
@@ -1450,6 +1456,7 @@ void Engine::paint() {
     break;
   }
   hits.clear();
+  drags.clear();
   select_texts_.clear();
   resolve_selection();
   frame.width = static_cast<int>(std::round(nodes[0].w * dpr));

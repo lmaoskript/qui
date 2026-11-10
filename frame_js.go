@@ -16,6 +16,13 @@ type platform struct {
 // SetAppID has no effect in the browser.
 func SetAppID(string) {}
 
+// SetBorderless and the window controls have no effect in the browser.
+func SetBorderless(bool)            {}
+func (u *Ui) MinimizeWindow()       {}
+func (u *Ui) ToggleMaximized()      {}
+func (u *Ui) CloseWindow()          {}
+func (u *Ui) WindowMaximized() bool { return false }
+
 // Open connects to the DOM patcher started by web/qui.js.
 func Open(title string, width, height int) *Ui {
 	bridge := js.Global().Get("__qui")

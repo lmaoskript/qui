@@ -41,6 +41,7 @@ constexpr float kDoubleTapSlop = 24, kFlingMin = 120, kFlingStop = 24, kFlingDec
 constexpr double kNever = std::numeric_limits<double>::infinity();
 
 std::string g_app_id;
+bool g_borderless = false;
 
 constexpr uint32_t kKeyReleased = 0x100;
 
@@ -272,6 +273,8 @@ struct qui_app {
   double smooth_next = 0, smooth_last = 0;
   double ease_next = 0;
   double trimmed_at = 0;
+  bool hit_drag = false;
+  double drag_click_at = 0;
   uint64_t smooth_id = 0;
   float smooth_left = 0;
   bool smooth_wheel = false;
@@ -397,6 +400,9 @@ struct qui_app {
     sdl_ready = true;
     Uint64 flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
     if (headless) flags |= SDL_WINDOW_HIDDEN;
+#if !defined(__ANDROID__)
+    if (g_borderless) flags |= SDL_WINDOW_BORDERLESS;
+#endif
     if (requested == "cpu" || !create_gl(flags, title, width, height)) {
       window = SDL_CreateWindow(title, width, height, flags);
       if (!window) {
@@ -406,6 +412,9 @@ struct qui_app {
       use_cpu();
     }
     if (window) read_size();
+#if !defined(__ANDROID__)
+    if (window && g_borderless) SDL_SetWindowHitTest(window, window_hit_test, this);
+#endif
     if (window && headless) {
       if (!env("QUI_DPR").empty()) {
         pixel_w = static_cast<int>(std::lround(static_cast<float>(width) * dpr));
@@ -418,6 +427,47 @@ struct qui_app {
       logical_w = static_cast<float>(width);
       logical_h = static_cast<float>(height);
     }
+  }
+
+  // Resize edges, then the app's Drag boxes, except where a hit box inside one
+  // takes the press.
+  static SDL_HitTestResult SDLCALL window_hit_test(SDL_Window *win, const SDL_Point *area, void *data) {
+    auto *app = static_cast<qui_app *>(data);
+    app->hit_drag = false;
+    int w = 0, h = 0;
+    if (!SDL_GetWindowSize(win, &w, &h)) return SDL_HITTEST_NORMAL;
+    if (!(SDL_GetWindowFlags(win) & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN))) {
+      constexpr int edge = 6;
+      const bool left = area->x < edge, right = area->x >= w - edge, top = area->y < edge, bottom = area->y >= h - edge;
+      if (top && left) return SDL_HITTEST_RESIZE_TOPLEFT;
+      if (top && right) return SDL_HITTEST_RESIZE_TOPRIGHT;
+      if (bottom && left) return SDL_HITTEST_RESIZE_BOTTOMLEFT;
+      if (bottom && right) return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
+      if (top) return SDL_HITTEST_RESIZE_TOP;
+      if (bottom) return SDL_HITTEST_RESIZE_BOTTOM;
+      if (left) return SDL_HITTEST_RESIZE_LEFT;
+      if (right) return SDL_HITTEST_RESIZE_RIGHT;
+    }
+    const float scale = SDL_GetWindowPixelDensity(win) / app->dpr;
+    const float x = static_cast<float>(area->x) * scale, y = static_cast<float>(area->y) * scale;
+    const uint64_t hit = app->hit_test(x, y, false);
+    for (const Engine::DragArea &drag : app->engine.drags) {
+      if (x < drag.x || x >= drag.x + drag.w || y < drag.y || y >= drag.y + drag.h) continue;
+      if (hit && hit != drag.id) return SDL_HITTEST_NORMAL;
+      app->hit_drag = true;
+      return SDL_HITTEST_DRAGGABLE;
+    }
+    return SDL_HITTEST_NORMAL;
+  }
+
+  void window_action(int action) {
+    if (!window) return;
+    if (action == 0) SDL_MinimizeWindow(window);
+    if (action == 1) {
+      if (SDL_GetWindowFlags(window) & SDL_WINDOW_MAXIMIZED) SDL_RestoreWindow(window);
+      else SDL_MaximizeWindow(window);
+    }
+    if (action == 2) quit = true;
   }
 
   static bool inside(const HitEntry &hit, float x, float y) {
@@ -1063,6 +1113,19 @@ struct qui_app {
       case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
         quit = true;
         break;
+      case SDL_EVENT_WINDOW_HIT_TEST: {
+        // Where the system reports presses on a drag area (X11), two of them
+        // maximize like a title bar's double click.
+        if (!hit_drag) break;
+        const double t = now();
+        if (t - drag_click_at < 0.5) {
+          drag_click_at = 0;
+          window_action(1);
+        } else {
+          drag_click_at = t;
+        }
+        break;
+      }
       case SDL_EVENT_WINDOW_RESIZED:
       case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
       case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
@@ -1667,6 +1730,14 @@ struct qui_app {
 extern "C" {
 
 void qui_set_app_id(const char *id) { g_app_id = id ? id : ""; }
+
+void qui_set_borderless(int on) { g_borderless = on != 0; }
+
+void qui_window_action(qui_app *app, int action) {
+  if (app) app->window_action(action);
+}
+
+int qui_window_maximized(qui_app *app) { return app && app->window && (SDL_GetWindowFlags(app->window) & SDL_WINDOW_MAXIMIZED) ? 1 : 0; }
 
 void qui_consume_back(qui_app *app) { app->back_consumed = true; }
 

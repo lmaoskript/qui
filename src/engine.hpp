@@ -81,7 +81,7 @@ struct Node {
   uint32_t gradient_from = 0, gradient_to = 0, shadow = 0;
   float gradient_angle = 0, shadow_blur = 0, shadow_y = 0, tracking = 0, scroll_to = 0;
   uint32_t jump = 0;
-  bool has_jump = false, glide = false;
+  bool has_jump = false, glide = false, drag = false;
   std::string_view text, label, src, placeholder;
   uint32_t count = 0;
   float est = 0;
@@ -299,6 +299,11 @@ class Engine {
   std::vector<TextLine> lines;
   std::vector<UniformRef> uniforms;
   std::vector<HitEntry> hits;
+  struct DragArea {
+    uint64_t id = 0;
+    float x = 0, y = 0, w = 0, h = 0;
+  };
+  std::vector<DragArea> drags;
   std::unordered_map<uint64_t, ScrollState> scrolls;
   std::unordered_map<uint64_t, ListState> lists;
   std::unordered_map<uint64_t, InputState> inputs;
