@@ -8,6 +8,10 @@ package qui
 const (
 	overlayZ    = 1 << 20
 	modalMargin = 16
+	sheetSlide  = 48
+	sheetTop    = 48
+	// Below this width a Menu opened by touch shows as a Sheet.
+	sheetBelow = 600
 )
 
 // Modal shows body in a centered panel over a dimming scrim. It returns true
@@ -35,6 +39,62 @@ func (u *Ui) Modal(key string, panel Style, body func()) bool {
 		u.Column(panel, body)
 	})
 	return dismissed || u.KeyPressed(KeyEscape)
+}
+
+// Sheet shows body in a panel that slides up from the bottom edge over a
+// dimming scrim, the phone form of Modal. It returns true when the user tapped
+// the scrim, swiped the panel down or pressed Escape. Without a Class, unset
+// panel fields get a full-width raised card.
+func (u *Ui) Sheet(key string, panel Style, body func()) bool {
+	dismissed := false
+	u.Stack(Style{Key: key, Absolute: true, W: Fill(), H: Fill(), Z: overlayZ}, func() {
+		pop := u.TweenFrom(key+"/pop", 0.01, 1, 200)
+		scrim := u.Column(Style{Key: key + "/scrim", Absolute: true, W: Fill(), H: Fill(), Bg: Scrim, Opacity: pop, Hit: true}, func() {})
+		if scrim.Clicked || scrim.DragEnd {
+			dismissed = true
+		}
+		u.Column(Style{Absolute: true, Y: (1 - pop) * sheetSlide, W: Fill(), H: Fill(), Pad: All(8), Align: Center, Justify: End}, func() {
+			if panel.Class == "" {
+				sheetDefaults(&panel)
+			}
+			if h := u.Height() - sheetTop; panel.MaxH == 0 || panel.MaxH > h {
+				panel.MaxH = h
+			}
+			panel.Hit, panel.Select, panel.Opacity = true, true, pop
+			panel.Gestures |= GesturePanY
+			if panel.Key == "" {
+				panel.Key = key + "/panel"
+			}
+			if u.Column(panel, body).Swipe == SwipeDown {
+				dismissed = true
+			}
+		})
+	})
+	return dismissed || u.KeyPressed(KeyEscape)
+}
+
+func sheetDefaults(s *Style) {
+	if s.W == (Size{}) {
+		s.W = Fill()
+	}
+	if s.MaxW == 0 {
+		s.MaxW = 560
+	}
+	if s.Bg == 0 {
+		s.Bg = Raised
+	}
+	if s.Border == 0 {
+		s.Border = Line
+	}
+	if s.BorderW == 0 {
+		s.BorderW = 1
+	}
+	if s.Radius == 0 {
+		s.Radius = 16
+	}
+	if s.Pad == (Edges{}) {
+		s.Pad = All(8)
+	}
 }
 
 // Popup places body at (x, y) in window coordinates, nudged to stay on screen,

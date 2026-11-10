@@ -104,6 +104,9 @@ struct TextStyle {
 inline constexpr int32_t kOverlayZ = 1 << 20;
 inline constexpr float kIconSize = 20;
 inline constexpr float kModalMargin = 16;
+inline constexpr float kSheetSlide = 48, kSheetTop = 48;
+// Below this width a menu opened by touch shows as a sheet.
+inline constexpr float kSheetBelow = 600;
 
 inline constexpr TextStyle Body{};
 inline constexpr TextStyle H1{.size = 24, .bold = true, .color = Strong, .role = RoleHeading};
@@ -230,6 +233,8 @@ struct Menu {
   float x = 0, y = 0;
   // Row positions are index+1, so 0 means none.
   int active = 0, hovered = 0, confirm = 0;
+  // Latched on the first frame: 1 for a popup, 2 for a sheet.
+  uint8_t mode = 0;
 
   void show(float at_x, float at_y) { *this = {.open = true, .x = at_x, .y = at_y}; }
 };
@@ -559,6 +564,41 @@ class Ui {
     return dismissed || key_pressed(KeyEscape);
   }
 
+  // A panel that slides up from the bottom edge over a scrim, the phone form of
+  // modal. Returns true when the scrim is tapped, the panel is swiped down or
+  // Escape is pressed. Without a klass, unset panel fields get a full-width card.
+  template <class F>
+  bool sheet(std::string_view key, Style panel, F &&body) {
+    bool dismissed = false;
+    const std::string k(key);
+    stack({.w = fill(), .h = fill(), .absolute = true, .z = kOverlayZ, .key = key}, [&] {
+      const float pop = tween_from(k + "/pop", 0.01F, 1, 200);
+      const Response scrim = column({.w = fill(), .h = fill(), .absolute = true, .bg = Scrim, .opacity = pop, .hit = true, .key = k + "/scrim"}, [] {});
+      if (scrim.clicked || scrim.drag_end) dismissed = true;
+      column({.w = fill(), .h = fill(), .pad = 8, .align = Center, .justify = End, .absolute = true, .y = (1 - pop) * kSheetSlide}, [&] {
+        if (panel.klass.empty()) sheet_defaults(panel);
+        if (const float h = height() - kSheetTop; !panel.max_h || panel.max_h > h) panel.max_h = h;
+        panel.hit = true;
+        panel.select = true;
+        panel.opacity = pop;
+        panel.gestures |= GesturePanY;
+        if (panel.key.empty()) panel.key = k + "/panel";
+        if (column(panel, body).swipe == Swipe::Down) dismissed = true;
+      });
+    });
+    return dismissed || key_pressed(KeyEscape);
+  }
+
+  static void sheet_defaults(Style &s) {
+    if (s.w.mode == wire::SizeFit && s.w.value == 0) s.w = fill();
+    if (!s.max_w) s.max_w = 560;
+    if (!s.bg) s.bg = Raised;
+    if (!s.border) s.border = Line;
+    if (!s.border_w) s.border_w = 1;
+    if (!s.radius) s.radius = 16;
+    if (!s.pad.top && !s.pad.right && !s.pad.bottom && !s.pad.left) s.pad = 8;
+  }
+
   // Shows `text` beside the pointer while `show` is true, usually a response's hovered.
   void tooltip(bool show, std::string_view text, Style style = {}) {
     if (!show || text.empty()) return;
@@ -633,8 +673,14 @@ class Ui {
   // the defaults.
   int menu(Menu &m, std::span<const MenuItem> items, Style s = {}) {
     if (!m.open || items.empty()) return -1;
-    constexpr float row_height = 32, margin = 8;
-    if (s.klass.empty()) {
+    if (!m.mode) m.mode = pointer_touch() && width() < kSheetBelow ? 2 : 1;
+    const bool as_sheet = m.mode == 2;
+    constexpr float margin = 8;
+    const float row_height = as_sheet ? 48 : 32;
+    if (as_sheet) {
+      s.w = fill();
+      if (s.klass.empty()) sheet_defaults(s);
+    } else if (s.klass.empty()) {
       if (s.w.mode == wire::SizeFit && s.w.value == 0) s.w = px(224);
       if (!s.bg) s.bg = Raised;
       if (!s.border) s.border = Line;
@@ -653,22 +699,20 @@ class Ui {
     else if (key_pressed(KeyEnd)) m.active = count;
 
     float panel_h = static_cast<float>(count) * row_height + static_cast<float>(count - 1) * s.gap + s.pad.top + s.pad.bottom;
-    if (const float limit = height() - 2 * margin; panel_h > limit) {
+    if (const float limit = as_sheet ? height() - kSheetTop : height() - 2 * margin; panel_h > limit) {
       panel_h = s.max_h = limit;
       s.scroll = true;
       if (m.active != before) s.scroll_to = std::max(0.f, static_cast<float>(m.active - 1) * (row_height + s.gap) - (panel_h - row_height) / 2);
     }
-    const float y = std::max(margin, std::min(m.y, height() - panel_h - margin));
-
     int chosen = -1, hovered = 0;
-    const bool dismissed = popup("qui/menu", m.x, y, s, [&] {
+    const auto rows = [&] {
       if (m.active == 0) u8_op(wire::OpFocus, 2);
       for (int i = 0; i < count; ++i) {
         const MenuItem &item = items[static_cast<size_t>(i)];
         const int position = i + 1;
-        const Response r = row({.w = fill(), .h = px(row_height), .pad = {0, 8}, .align = Center, .bg = position == m.active ? Hover : Color{0}, .radius = 6, .hit = true, .role = RoleMenuItem}, [&] {
+        const Response r = row({.w = fill(), .h = px(row_height), .pad = {0, as_sheet ? 12.0F : 8.0F}, .align = Center, .bg = position == m.active ? Hover : Color{0}, .radius = as_sheet ? 10.0F : 6.0F, .hit = true, .role = RoleMenuItem}, [&] {
           if (position == m.active) u8_op(wire::OpFocus, 2);
-          text(position == m.confirm ? item.confirm : item.label, {.ellipsis = true, .color = item.danger ? Danger : Ink, .w = fill()});
+          text(position == m.confirm ? item.confirm : item.label, {.size = as_sheet ? 16.0F : 0.0F, .ellipsis = true, .color = item.danger ? Danger : Ink, .w = fill()});
         });
         if (r.hovered) hovered = position;
         if (r.clicked) {
@@ -680,7 +724,8 @@ class Ui {
           }
         }
       }
-    });
+    };
+    const bool dismissed = as_sheet ? sheet("qui/menu", s, rows) : popup("qui/menu", m.x, std::max(margin, std::min(m.y, height() - panel_h - margin)), s, rows);
     if (hovered != m.hovered) {
       if (hovered) m.active = hovered;
       else if (m.active == m.hovered) m.active = 0;

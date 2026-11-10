@@ -111,7 +111,7 @@ On the web, `Role` picks the element (`RoleHeading` h2, `RoleLink` a, `RoleMain`
 
 Controls: `if ui.Switch("sounds", on, "Sounds") { on = !on }` and `vol = ui.Slider("volume", vol, qui.Px(160), "Volume")` (0 to 1). Both take Tab focus, work from the keyboard (Space, arrows, Home, End) and are role=switch / role=slider on the web. C++: `ui.toggle_switch(key, on, label)`, `ui.slider(key, value, w, label)`.
 
-Context menus: keep a `qui.Menu` in app state, call `a.menu.Show(ui.PointerX(), ui.PointerY())` on a right click, and each frame `switch ui.Menu(&a.menu, []qui.MenuItem{{Label: "Copy"}, {Label: "Delete", Danger: true, Confirm: "Press again"}}) { case 0: ... }` (-1 when nothing was chosen). It stays on screen, takes the arrows, Home, End, Enter and Space, closes on Escape or a press outside, and hands focus back. C++: `ui.menu(m, items, panel_style)`, `m.show(x, y)`.
+Context menus: keep a `qui.Menu` in app state, call `a.menu.Show(ui.PointerX(), ui.PointerY())` on a right click, and each frame `switch ui.Menu(&a.menu, []qui.MenuItem{{Label: "Copy"}, {Label: "Delete", Danger: true, Confirm: "Press again"}}) { case 0: ... }` (-1 when nothing was chosen). It stays on screen, takes the arrows, Home, End, Enter and Space, closes on Escape or a press outside, and hands focus back. Opened by touch on a window under 600 wide, it shows as a full-width `Sheet`. C++: `ui.menu(m, items, panel_style)`, `m.show(x, y)`.
 
 ## Text input and keys
 
@@ -262,7 +262,7 @@ Custom title bar: call `qui.SetBorderless(true)` before `Open` (C++ `qui::set_bo
 
 Motion: `Ease: 150` on a box animates its `Bg`, `Fg`, `Border`, `Radius`, `Opacity` and button hover tint over 150ms when they change; give it a stable `Key`. `HoverBg` replaces `Bg` while the pointer is over the box or its children, with no frame of delay, so a row stays lit over its own buttons. For anything else, `v := ui.Tween(key, target, ms)` returns an eased value each frame (once per key per frame) and keeps frames coming until it arrives, e.g. a growing `H: qui.Px(v)`. `TweenFrom(key, from, target, ms)` starts at `from` the first frame the key appears, for enter animations; Modal and Popup use it to fade in. Opacity 0 means unset, so start from a small value. C++: `.ease`, `.hover_bg`, `ui.tween(key, target, ms)`, `ui.tween_from(key, from, target, ms)`.
 
-`Modal` centers a panel over a scrim (capped to the window minus 16px a side), `Popup` places a panel at window coordinates (take them from `PointerX/PointerY` on a right click) and keeps it on screen when it has a `W`, and `Tooltip` follows the pointer and flips to the other side of it near a window edge. C++: `ui.modal(key, style, body)`, `ui.popup(key, x, y, style, body)`, `ui.tooltip(show, text)`.
+`Modal` centers a panel over a scrim (capped to the window minus 16px a side), `Popup` places a panel at window coordinates (take them from `PointerX/PointerY` on a right click) and keeps it on screen when it has a `W`, `Sheet` slides a panel up from the bottom over a scrim and also closes on a swipe down, and `Tooltip` follows the pointer and flips to the other side of it near a window edge. C++: `ui.modal(key, style, body)`, `ui.popup(key, x, y, style, body)`, `ui.sheet(key, style, body)`, `ui.tooltip(show, text)`.
 
 ## Gestures
 
