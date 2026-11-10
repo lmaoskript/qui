@@ -51,6 +51,9 @@ type Style struct {
 	Label, Key                      string
 	// Class names registered with Ui.Class, separated by spaces.
 	Class string
+	// NoSelect keeps the mouse from selecting text in this subtree; Select
+	// on a descendant turns it back on there.
+	NoSelect bool
 }
 
 type TextStyle struct {
@@ -614,6 +617,9 @@ func (u *Ui) emitStyle(s *Style) {
 	}
 	if s.Select {
 		u.u8(opSelect)
+	}
+	if s.NoSelect {
+		u.u8(opNoSelect)
 	}
 	if s.Wrap {
 		u.u8(opWrap)

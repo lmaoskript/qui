@@ -29,6 +29,7 @@ func (u *Ui) Modal(key string, panel Style, body func()) bool {
 		if h := u.Height() - 2*modalMargin; h > 0 && (panel.MaxH == 0 || panel.MaxH > h) {
 			panel.MaxH = h
 		}
+		panel.Select = true
 		u.Column(panel, body)
 	})
 	return dismissed || u.KeyPressed(KeyEscape)
@@ -54,7 +55,7 @@ func (u *Ui) Popup(key string, x, y float32, panel Style, body func()) bool {
 		if catcher.Clicked || catcher.RightClicked {
 			dismissed = true
 		}
-		panel.Absolute, panel.X, panel.Y, panel.Hit = true, x, y, true
+		panel.Absolute, panel.X, panel.Y, panel.Hit, panel.Select = true, x, y, true, true
 		if panel.Key == "" {
 			panel.Key = key + "/panel"
 		}

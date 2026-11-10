@@ -71,6 +71,9 @@ struct Style {
   std::string_view label{}, key{};
   bool select = false;
   bool wrap = false;
+  // Keeps the mouse from selecting text in this subtree; select on a
+  // descendant turns it back on there.
+  bool no_select = false;
 };
 
 struct TextStyle {
@@ -467,6 +470,7 @@ class Ui {
       const Response scrim = column({.w = fill(), .h = fill(), .absolute = true, .bg = Scrim, .hit = true, .key = scrim_key}, [] {});
       if (scrim.clicked) dismissed = true;
       panel.hit = true;
+      panel.select = true;
       if (panel.key.empty()) panel.key = panel_key;
       if (const float w = width() - 2 * kModalMargin; w > 0 && (!panel.max_w || panel.max_w > w)) panel.max_w = w;
       if (const float h = height() - 2 * kModalMargin; h > 0 && (!panel.max_h || panel.max_h > h)) panel.max_h = h;
@@ -488,6 +492,7 @@ class Ui {
       panel.x = x;
       panel.y = y;
       panel.hit = true;
+      panel.select = true;
       if (panel.key.empty()) panel.key = panel_key;
       column(panel, body);
     });
@@ -762,6 +767,7 @@ class Ui {
       s.key = "panel";
       s.absolute = true;
       s.hit = true;
+      s.select = true;
       s.w = horizontal ? px(size) : fill();
       s.h = horizontal ? fill() : px(size);
       s.x = options.side == Side::Left ? travel : options.side == Side::Right ? parent_w - size - travel : 0;
@@ -990,6 +996,7 @@ class Ui {
     s.hit |= b.hit;
     s.select |= b.select;
     s.wrap |= b.wrap;
+    s.no_select |= b.no_select;
     if (!s.gestures) s.gestures = b.gestures;
     if (!s.role) s.role = b.role;
     if (s.label.empty()) s.label = b.label;
@@ -1042,6 +1049,7 @@ class Ui {
     if (s.scroll_to) f32_op(wire::OpScrollTo, *s.scroll_to);
     if (s.hit) u8_op(wire::OpHit, 1);
     if (s.select) u8(wire::OpSelect);
+    if (s.no_select) u8(wire::OpNoSelect);
     if (s.wrap) u8(wire::OpWrap);
     if (s.gestures) u8_op(wire::OpGestures, s.gestures);
     if (s.role) u8_op(wire::OpRole, s.role);

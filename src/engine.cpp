@@ -75,6 +75,7 @@ constexpr float kOverscan = 200;
 constexpr float kDefaultRange = 32;
 constexpr float kInputWidth = 200;
 constexpr float kIconSize = 20;
+constexpr uint64_t kRootId = 0x9e3779b97f4a7c15ull;
 
 template <class F>
 void each_child(std::vector<Node> &nodes, const Node &node, F &&visit) {
@@ -197,6 +198,8 @@ void Engine::decode(const uint8_t *wire, size_t len) {
 
   Node root;
   root.kind = KindBox;
+  root.id = kRootId;
+  root.select_root = 0;
   root.dir = DirStack;
   root.w_mode = root.h_mode = SizePx;
   nodes.push_back(root);
@@ -333,6 +336,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpOpacity: node.opacity = in.read<float>(); break;
       case OpClip: node.clip = true; break;
       case OpSelect: node.select_root = stack.back(); break;
+      case OpNoSelect: node.select_root = -1; break;
       case OpWrap: node.wrap = true; break;
       case OpValue: in.read<float>(); break;
       case OpScroll: node.scroll = node.clip = true; break;
@@ -340,6 +344,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpRole:
         node.role = in.read<uint8_t>();
         if (node.role == RoleMenu) menu_open = true;
+        if (node.role == RoleButton || node.role == RoleMenu || node.role == RoleMenuItem || node.role == RoleSwitch || node.role == RoleSlider) node.select_root = -1;
         break;
       case OpLabel: node.label = in.str(); break;
       case OpText: node.text = in.str(); break;

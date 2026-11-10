@@ -68,6 +68,7 @@ func (u *Ui) Drawer(d *Drawer, o DrawerOptions, content, panel func()) Response 
 		s.Key = "panel"
 		s.Absolute = true
 		s.Hit = true
+		s.Select = true
 		s.W, s.H = Px(size), Fill()
 		if !horizontal {
 			s.W, s.H = Fill(), Px(size)

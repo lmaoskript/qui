@@ -65,8 +65,11 @@ const baseCss = `
 .qui-root, .qui-root * { scrollbar-width: thin; scrollbar-color: var(--qui-Scrollbar) transparent; }
 .qui-root canvas { display: block; }
 .qui-root [data-qh], .qui-root [data-qp], .qui-list, .qui-text { pointer-events: auto; }
-.qui-root [data-qh]:not(.qui-input) { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
-.qui-root .qui-select, .qui-root .qui-select [data-qh]:not(.qui-input):not(button) { user-select: text; -webkit-user-select: text; }
+.qui-root [data-qh]:not(.qui-input) { -webkit-touch-callout: none; touch-action: pan-y; }
+.qui-root button, .qui-root [role=button], .qui-root [role=switch], .qui-root [role=slider], .qui-root [role^=menu] { user-select: none; -webkit-user-select: none; }
+@media (pointer: coarse) { .qui-root [data-qh]:not(.qui-input) { user-select: none; -webkit-user-select: none; } }
+.qui-root .qui-select { user-select: text; -webkit-user-select: text; }
+.qui-root .qui-noselect { user-select: none; -webkit-user-select: none; }
 .qui-panning, .qui-panning * { user-select: none; -webkit-user-select: none; }
 `;
 
@@ -188,6 +191,7 @@ function decode(bytes, length) {
       case Op.Opacity: node.opacity = r.f32(); break;
       case Op.Clip: node.clip = true; break;
       case Op.Select: node.select = true; break;
+      case Op.NoSelect: node.noSelect = true; break;
       case Op.Wrap: node.wrap = true; break;
       case Op.Value: node.value = r.f32(); break;
       case Op.Scroll: node.scroll = true; break;
@@ -247,6 +251,18 @@ function sizeCss(mode, value, property) {
 
 // Whether the node's height is known without measuring its own content. A Fill child of a
 // content-sized column must keep its content height as flex-basis, or the column collapses.
+function selectable(target) {
+  const el = target?.nodeType === 1 ? target : target?.parentElement;
+  if (!el || el.closest("button, a, .qui-input")) return false;
+  for (let at = el; at && at !== document.documentElement; at = at.parentElement) {
+    const style = getComputedStyle(at);
+    const value = style.userSelect || style.webkitUserSelect;
+    if (value === "none") return false;
+    if (value === "text" || value === "all") return true;
+  }
+  return true;
+}
+
 function definiteHeight(node, parent) {
   const hMode = node.hMode ?? Size.Fit;
   if (hMode === Size.Px) return true;
@@ -559,7 +575,7 @@ class Patcher {
       clearTimeout(press.longTimer);
       const axis = Math.abs(totalX) > Math.abs(totalY) ? Gesture.PanX : Gesture.PanY;
       const selecting = !press.touch && press.target.closest?.(".qui-input");
-      if (!press.touch && press.target.closest?.(".qui-select") && !press.target.closest?.("button, a, .qui-input")) {
+      if (!press.touch && selectable(press.target)) {
         unpress(press);
         press.claimed = true;
         return true;
@@ -1033,6 +1049,7 @@ class Patcher {
         el.tabIndex = -1;
       }
       el.classList.toggle("qui-select", !!node.select);
+      el.classList.toggle("qui-noselect", !!node.noSelect);
       if (node.hit || node.kind === Kind.Button || node.kind === Kind.Input) el.setAttribute("data-qh", "");
       else el.removeAttribute("data-qh");
       el.__gestures = node.gestures ?? 0;
