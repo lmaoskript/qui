@@ -223,7 +223,7 @@ struct qui_app {
   SDL_Window *window = nullptr;
   SDL_GLContext gl = nullptr;
 
-  bool headless = false, sdl_ready = false, quit = false, dirty = true, force_full = true, window_focused = true;
+  bool headless = false, sdl_ready = false, quit = false, dirty = true, force_full = true, window_focused = true, stop_text_pending = false;
   int frames = 0;
   int pixel_w = 0, pixel_h = 0;
   float dpr = 1, logical_w = 0, logical_h = 0;
@@ -567,8 +567,8 @@ struct qui_app {
     dirty = true;
     restart_blink();
     if (!changed || !sdl_ready || !window) return;
-    if (focused_input()) SDL_StartTextInput(window);
-    else SDL_StopTextInput(window);
+    stop_text_pending = !focused_input();
+    if (!stop_text_pending) SDL_StartTextInput(window);
   }
 
   void focus_step(bool backwards) {
@@ -1708,6 +1708,10 @@ struct qui_app {
     if (engine.selection.empty()) engine.selection_cache.clear();
     else engine.selection_cache = engine.selected_text();
     if (focused && std::none_of(engine.hits.begin(), engine.hits.end(), [&](const HitEntry &e) { return e.id == focused; })) set_focus(0, false);
+    // Stopping waits a frame, so a tap that the app answers by focusing an input
+    // keeps the on-screen keyboard. Android's check for a shown keyboard lags a
+    // stop, so a stop and start within one frame would leave it hidden.
+    if (std::exchange(stop_text_pending, false) && !focused_input() && sdl_ready && window) SDL_StopTextInput(window);
     update_ime_area();
     for (const AtlasUpload &upload : engine.fonts.pending_uploads()) backend->upload(upload);
     engine.fonts.clear_pending_uploads();
