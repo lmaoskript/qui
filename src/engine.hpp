@@ -81,7 +81,7 @@ struct Node {
   uint32_t gradient_from = 0, gradient_to = 0, shadow = 0;
   float gradient_angle = 0, shadow_blur = 0, shadow_y = 0, tracking = 0, scroll_to = 0;
   uint32_t jump = 0;
-  bool has_jump = false;
+  bool has_jump = false, glide = false;
   std::string_view text, label, src, placeholder;
   uint32_t count = 0;
   float est = 0;
@@ -213,10 +213,15 @@ struct ListState {
   uint32_t anchor = 0, count = 0, first = 0, visible = 0;
   float offset = 0, est = 32, gap = 0, viewport = 0;
   bool seen = false, bottom = false, stuck = true, jumped = false;
+  // An eased jump toward `glide_to`, which ends centered in the viewport.
+  bool gliding = false;
+  uint32_t glide_to = 0;
+  double glide_at = 0;
   uint64_t frame = 0;
   std::unordered_map<uint32_t, float> heights;
 
   float height(uint32_t index) const;
+  float distance_to(uint32_t index) const;
   float average() const;
   void scroll_by(float delta);
   void jump(float fraction);

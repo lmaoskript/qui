@@ -173,7 +173,7 @@ func main() {
 }
 ```
 
-Arguments are key, row count, estimated row height, options, row body. `JumpTo` scrolls an item to the top for one frame. The body runs only for visible rows and heights may vary. To load older items on scroll, insert them at the front of your data and set `ListOptions.Prepend` to how many you inserted that frame (C++ `.prepend`), so the rows on screen stay put; it is native only. `Response.First` tells you when row 0 is on screen. The list needs a bounded height. `Bottom: true` starts at the end and stays pinned there, and a short list sits at the bottom, for chat logs.
+Arguments are key, row count, estimated row height, options, row body. `JumpTo` scrolls an item to the top for one frame; with `Glide: true` it eases the item to the middle instead, and a wheel or drag cancels it (native only). The body runs only for visible rows and heights may vary. To load older items on scroll, insert them at the front of your data and set `ListOptions.Prepend` to how many you inserted that frame (C++ `.prepend`), so the rows on screen stay put; it is native only. `Response.First` tells you when row 0 is on screen. The list needs a bounded height. `Bottom: true` starts at the end and stays pinned there, and a short list sits at the bottom, for chat logs.
 
 ## Shaders
 

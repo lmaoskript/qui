@@ -173,6 +173,8 @@ struct ListOptions {
   uint32_t prepend = 0;
   // Scrolls this item to the top of the list on this frame only. Native only.
   std::optional<uint32_t> jump_to{};
+  // Makes jump_to ease the item to the middle of the list instead.
+  bool glide = false;
 };
 
 struct Uniform {
@@ -672,6 +674,7 @@ class Ui {
       u32(options.prepend);
     }
     if (options.jump_to) {
+      if (options.glide && !reduce_motion_) u8(wire::OpGlide);
       u8(wire::OpJump);
       u32(*options.jump_to);
     }

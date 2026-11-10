@@ -139,6 +139,15 @@ void ListState::jump(float fraction) {
   jumped = true;
 }
 
+// How far below the viewport's top the item starts, by known or estimated
+// heights.
+float ListState::distance_to(uint32_t index) const {
+  float d = -offset;
+  for (uint32_t i = anchor; i < index; ++i) d += height(i) + gap;
+  for (uint32_t i = index; i < anchor; ++i) d -= height(i) + gap;
+  return d;
+}
+
 void ListState::scroll_by(float delta) {
   offset += delta;
   while (anchor + 1 < count && offset >= height(anchor) + gap) {
@@ -362,6 +371,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
       case OpItem: node.item = in.read<uint32_t>(); break;
       case OpPrepend: node.prepend = in.read<uint32_t>(); break;
       case OpJump: node.jump = in.read<uint32_t>(); node.has_jump = true; break;
+      case OpGlide: node.glide = true; break;
       case OpSrc: node.src = in.str(); break;
       case OpFps: node.fps = in.read<float>(); break;
       case OpPlaceholder: node.placeholder = in.str(); break;
@@ -761,12 +771,43 @@ void Engine::place_list(Node &node) {
     state.heights.swap(shifted);
     state.anchor += node.prepend;
   }
-  if (node.has_jump && node.jump < state.count) {
+  if (node.has_jump && node.jump < state.count && node.glide) {
+    state.gliding = true;
+    state.glide_to = node.jump;
+    state.glide_at = time;
+    // From far away, cut to a screen short of the item and ease the rest.
+    const float d = state.distance_to(node.jump);
+    if (std::abs(d) > state.viewport * 2) {
+      state.anchor = node.jump;
+      state.offset = 0;
+      state.scroll_by(d > 0 ? -state.viewport : state.viewport);
+    }
+    state.stuck = false;
+  } else if (node.has_jump && node.jump < state.count) {
+    state.gliding = false;
     state.anchor = node.jump;
     state.offset = 0;
     state.stuck = false;
     state.jumped = true;
     wants_another_frame = true;
+  }
+  bool glide_blocked = false;
+  if (state.gliding && state.glide_to < state.count) {
+    const float h = state.height(state.glide_to);
+    const float remaining = state.distance_to(state.glide_to) - std::max(0.f, (state.viewport - h) / 2);
+    const float dt = static_cast<float>(std::clamp(time - state.glide_at, 0.0, 0.05));
+    state.glide_at = time;
+    const float step = std::abs(remaining) < 1 ? remaining : remaining * (1 - std::exp(-14 * dt));
+    const uint32_t before_anchor = state.anchor;
+    const float before_offset = state.offset;
+    state.scroll_by(step);
+    state.stuck = false;
+    glide_blocked = state.anchor == before_anchor && state.offset == before_offset && step != 0;
+    if (std::abs(remaining) < 1 || glide_blocked) state.gliding = false;
+    state.jumped = true;
+    wants_another_frame = true;
+  } else {
+    state.gliding = false;
   }
   if (state.anchor >= state.count) state.anchor = state.count ? state.count - 1 : 0;
 
@@ -860,6 +901,8 @@ void Engine::place_list(Node &node) {
     }
   }
   state.stuck = reached_end && last.y + last.h <= bottom + 1;
+  // The item cannot be centered past either end of the list.
+  if (state.gliding && (state.stuck || (state.anchor == 0 && state.offset <= 0 && items.front()->item == 0 && items.front()->y >= top))) state.gliding = false;
 
   if ((!reached_end && last.y + last.h < bottom) || (items.front()->item > 0 && items.front()->y > top))
     wants_another_frame = true;

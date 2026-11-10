@@ -136,6 +136,8 @@ type ListOptions struct {
 	// JumpTo scrolls that item to the top of the list on this frame only. Native
 	// only: the browser ignores it.
 	JumpTo *int
+	// Glide makes JumpTo ease the item to the middle of the list instead.
+	Glide bool
 }
 
 type Uniform struct {
@@ -324,6 +326,9 @@ func (u *Ui) List(key string, count int, estimate float32, o ListOptions, row fu
 		u.u8(0)
 	}
 	if o.JumpTo != nil {
+		if o.Glide && !u.reduceMotion {
+			u.u8(opGlide)
+		}
 		u.u8(opJump)
 		u.u32(uint32(*o.JumpTo))
 	}

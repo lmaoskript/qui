@@ -20,6 +20,7 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `Fit` | `u8`: `Cover` 0, `Contain` 1, `Stretch` 2 |
 | `Span` | `start:u32 end:u32 flags:u8 fg:u32 bg:u32 id:u64 image:u64`, after `Text`. Styles a byte range; `id` non-zero makes it a hit target reported under that id. `flags`: `Bold` 1, `Mono` 2, `Italic` 4, `Underline` 8, `Strike` 16, `Image` 32 (draws the loaded image `image` over the span's placeholder text) |
 | `Jump` | `u32` on a `List`: scrolls that item to the top on this frame only |
+| `Glide` | none, with `Jump`: eases the item to the middle of the viewport over the next frames instead, cutting to a screen away first when it is far; user scrolling cancels it |
 | `ImageFree` | `key:u64`, directly after `Palette` like `ImageData`: forgets the image and its atlas space |
 | `Prepend` | `u32` on a `List`: items inserted at the front this frame; the engine shifts its scroll anchor and cached heights by that count |
 | `Palette` | `count:u16` then `count` of `token:u8 rgba:u32`. Optional, directly after `Frame`. Overrides or adds theme tokens for this frame; ids 20 to 255 are free for apps and show up on the web as `--qui-T<id>` |

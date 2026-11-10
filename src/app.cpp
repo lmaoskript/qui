@@ -745,6 +745,7 @@ struct qui_app {
     if (const auto input = engine.inputs.find(id); input != engine.inputs.end()) {
       input->second.scroll_y = std::clamp(input->second.scroll_y + delta * dpr, 0.f, input->second.scroll_limit_y);
     } else if (const auto list = engine.lists.find(id); list != engine.lists.end()) {
+      list->second.gliding = false;
       list->second.scroll_by(delta);
       if (delta > 0 && list->second.bottom && list->second.anchor + 1 >= list->second.count) list->second.stuck = true;
     } else if (const auto scroll = engine.scrolls.find(id); scroll != engine.scrolls.end()) {
@@ -1594,6 +1595,7 @@ struct qui_app {
     engine.insets[1] = inset_right;
     engine.insets[2] = inset_bottom;
     engine.insets[3] = inset_left;
+    engine.time = clock();
     engine.layout(logical_w, logical_h, dpr);
     if (engine.menu_open != menu_open) {
       menu_open = engine.menu_open;
@@ -1605,7 +1607,6 @@ struct qui_app {
       engine.focus_request = 0;
     }
     engine.ui = {shown_hovered(), shown_pressed(), focused, focus_ring, headless || caret_on, scrollbar_dragged ? scrollbar_dragged : scrollbar_hovered};
-    engine.time = clock();
     engine.paint();
     ease_next = engine.easing ? clock() + (cpu ? kFlingStep : 0.004) : 0;
     if (engine.selection.empty()) engine.selection_cache.clear();
