@@ -355,7 +355,7 @@ class Ui {
   }
 
   void set_token(Color token, Color value) {
-    const uint8_t id = token >> 24;
+    const auto id = static_cast<uint8_t>(token >> 24);
     for (auto &entry : palette_) {
       if (entry.first == id) {
         entry.second = value;
@@ -1038,8 +1038,8 @@ class Ui {
     if (palette_.empty()) return;
     u8(wire::OpPalette);
     const uint16_t count = static_cast<uint16_t>(palette_.size());
-    u8(count & 255);
-    u8(count >> 8);
+    u8(static_cast<uint8_t>(count & 255));
+    u8(static_cast<uint8_t>(count >> 8));
     for (const auto &[id, value] : palette_) {
       u8(id);
       u32(value);
