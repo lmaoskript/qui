@@ -57,7 +57,7 @@ const baseCss = `
   color: var(--qui-Ink); font: inherit; outline: none; resize: none; }
 .qui-input:focus { border-color: var(--qui-Accent); }
 .qui-input.qui-bare { border-width: 0; background: transparent; }
-.qui-input::placeholder { color: var(--qui-Muted); opacity: 1; }
+.qui-input::placeholder { color: var(--qui-Muted); opacity: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qui-list { overflow-y: auto; display: block; }
 .qui-huge { overflow-anchor: none; }
 .qui-end { display: flex; flex-direction: column; }

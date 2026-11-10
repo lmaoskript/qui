@@ -593,7 +593,10 @@ void Engine::distribute_width(Node &node) {
 
 void Engine::wrap(Node &node, float inner_width) {
   node.line_first = static_cast<uint32_t>(lines.size());
-  const float limit = node.kind == KindInput && !node.multiline ? std::numeric_limits<float>::infinity() : inner_width * dpr;
+  // A placeholder stays on one line and ends in an ellipsis when it is too long.
+  const bool placeholder = node.kind == KindInput && node.placeholder_shown;
+  const bool ellipsis = node.ellipsis || placeholder;
+  const float limit = node.kind == KindInput && !node.multiline && !placeholder ? std::numeric_limits<float>::infinity() : inner_width * dpr;
   std::string_view rest = node.text;
   uint32_t para_byte = 0;
   for (;;) {
@@ -603,9 +606,9 @@ void Engine::wrap(Node &node, float inner_width) {
     const auto count = static_cast<uint32_t>(shaped.glyphs.size());
     const uint32_t para_end = para_byte + static_cast<uint32_t>(para.size());
 
-    if (node.ellipsis || shaped.total_advance <= limit + 0.5f || count == 0) {
+    if (ellipsis || shaped.total_advance <= limit + 0.5f || count == 0) {
       TextLine line{&shaped, 0, count, shaped.total_advance, false, para_byte, para_byte, para_end};
-      if (node.ellipsis && shaped.total_advance > limit + 0.5f) {
+      if (ellipsis && shaped.total_advance > limit + 0.5f) {
         const ShapedLine &dots = shaper.shape_line_single("\xe2\x80\xa6", {}, {node.font, 0xffffffffu, true});
         const float room = std::max(0.f, limit - dots.total_advance);
         uint32_t last = 0;
@@ -642,7 +645,7 @@ void Engine::wrap(Node &node, float inner_width) {
         lines.push_back({&shaped, line_first, visible, width, false, para_byte, line_start, line_end});
       }
     }
-    if (node.ellipsis || nl == std::string_view::npos) break;
+    if (ellipsis || nl == std::string_view::npos) break;
     rest.remove_prefix(nl + 1);
     para_byte = para_end + 1;
   }
