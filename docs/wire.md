@@ -67,7 +67,8 @@ next one, so widget calls never cross into the engine.
 
 The header is 64 bytes: `magic:u32 capacity:u32 width:f32 height:f32 dpr:f32
 dt:f32 pointer_x:f32 pointer_y:f32 keys_offset:u32 keys_count:u32
-text_offset:u32 pointer_down:u32 engine_ms:f32` and 12 reserved bytes. It is followed by `capacity` slots of 56 bytes,
+text_offset:u32 pointer_down:u32 engine_ms:f32 window_focused:u32
+pointer_touch:u32` and 4 reserved bytes. It is followed by `capacity` slots of 56 bytes,
 open-addressed with linear probing from `id & (capacity - 1)`. An empty slot has
 `id == 0`.
 

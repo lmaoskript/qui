@@ -93,7 +93,7 @@ A strict flexbox subset that maps directly to CSS.
 
 `Response` fields: `Found Hovered Pressed Clicked RightClicked Focused DragStart Dragging DragEnd Changed Submitted LongPressed DoubleTapped PanStart Panning PanEnd Pinching X Y W H DX DY VX VY Scale Swipe First Count Error`. `ui.Peek(key)` returns last frame's `Response` for a keyed node before you build it, to style it by its hover (C++ `peek`).
 
-Frame info: `Width Height Dpr Dt PointerX PointerY PointerDown`. `Stats()` gives `Nodes WireBytes EngineMs` for the last frame.
+Frame info: `Width Height Dpr Dt PointerX PointerY PointerDown PointerTouch` (a lifted finger keeps its position, so skip hover effects while `PointerTouch && !PointerDown`). `Stats()` gives `Nodes WireBytes EngineMs` for the last frame.
 
 ## Color and semantics
 

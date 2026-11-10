@@ -644,7 +644,7 @@ class Patcher {
         state.dy += now.y - press.finger.y;
       }
       press.finger = now;
-      this.movePointer({ clientX: now.x, clientY: now.y });
+      this.movePointer({ clientX: now.x, clientY: now.y, pointerType: "touch" });
       this.requestFrame();
     };
     this.bindPinchWheel = () => {
@@ -846,6 +846,7 @@ class Patcher {
   movePointer(event) {
     const origin = this.root.getBoundingClientRect();
     this.pointer = [event.clientX - origin.left, event.clientY - origin.top];
+    this.touch = event.pointerType === "touch";
   }
 
   autosize(field) {
@@ -1243,6 +1244,7 @@ class Patcher {
     view.setUint32(44, this.down || this.tapped ? 1 : 0, true);
     this.tapped = false;
     view.setFloat32(48, this.engineMs, true);
+    view.setUint32(56, this.touch ? 1 : 0, true);
     const origin = this.root.getBoundingClientRect();
     this.lastTime = now;
     for (const entry of this.entries.values()) {

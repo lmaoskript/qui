@@ -371,6 +371,7 @@ class Ui {
   float pointer_x() const { return header(24); }
   float pointer_y() const { return header(28); }
   bool pointer_down() const { return header_u32(44) != 0; }
+  bool pointer_touch() const { return header_u32(56) != 0; }
   bool window_focused() const { return header_u32(52) != 0; }
   Stats stats() const {
     Stats out = stats_;

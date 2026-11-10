@@ -1591,6 +1591,8 @@ struct qui_app {
     std::memcpy(p + 48, &engine_ms, 4);
     const uint32_t focused_flag = window_focused ? 1u : 0u;
     std::memcpy(p + 52, &focused_flag, 4);
+    const uint32_t touch_flag = input_touch ? 1u : 0u;
+    std::memcpy(p + 56, &touch_flag, 4);
     if (!keys.empty()) std::memcpy(p + keys_at, keys.data(), keys.size() * 4);
     if (!text_blob.empty()) std::memcpy(p + text_at, text_blob.data(), text_blob.size());
 

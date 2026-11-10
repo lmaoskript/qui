@@ -251,6 +251,12 @@ func (u *Ui) PointerDown() bool {
 	return len(u.res) >= resultsHeader && binary.LittleEndian.Uint32(u.res[44:]) != 0
 }
 
+// PointerTouch reports whether the pointer is a finger. A lifted finger leaves
+// PointerX and PointerY where it was, so skip hover effects while it is up.
+func (u *Ui) PointerTouch() bool {
+	return len(u.res) >= resultsHeader && binary.LittleEndian.Uint32(u.res[56:]) != 0
+}
+
 // Stats describes the last submitted frame.
 func (u *Ui) Stats() Stats {
 	stats := u.stats
