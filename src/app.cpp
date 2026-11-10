@@ -280,6 +280,10 @@ struct qui_app {
   bool smooth_wheel = false;
 
   double next_tick = 0, blink_at = 0;
+  // Android can drop the first frames presented to a surface it just
+  // recreated, so a resume redraws a few times while it settles.
+  int settle_frames = 0;
+  double settle_next = 0;
   double last_frame_time = 0;
   float dt = 1.f / 60.f;
 
@@ -1138,9 +1142,17 @@ struct qui_app {
       case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
       case SDL_EVENT_WINDOW_EXPOSED:
       case SDL_EVENT_WINDOW_SAFE_AREA_CHANGED:
+      case SDL_EVENT_WINDOW_SHOWN:
+      case SDL_EVENT_WINDOW_RESTORED:
       case SDL_EVENT_DID_ENTER_FOREGROUND:
         dirty = true;
         force_full = true;
+#if defined(__ANDROID__)
+        if (e.type == SDL_EVENT_WINDOW_RESTORED || e.type == SDL_EVENT_WINDOW_SHOWN) {
+          settle_frames = 4;
+          settle_next = now() + 0.1;
+        }
+#endif
         break;
       case SDL_EVENT_MOUSE_MOTION: {
         float x, y;
@@ -1509,6 +1521,7 @@ struct qui_app {
       if (fling_id) deadline = std::min(deadline, fling_next);
       if (smooth_id) deadline = std::min(deadline, smooth_next);
       if (ease_next > 0) deadline = std::min(deadline, ease_next);
+      if (settle_frames > 0) deadline = std::min(deadline, settle_next);
       bool got = false;
       if (deadline - now() > 0.25) release_idle_memory();
       if (std::isfinite(deadline)) {
@@ -1517,6 +1530,11 @@ struct qui_app {
         got = SDL_WaitEvent(&event);
       }
       if (got) handle(event);
+      if (settle_frames > 0 && now() >= settle_next) {
+        --settle_frames;
+        settle_next = now() + 0.12;
+        dirty = force_full = true;
+      }
       if (blinking && now() >= blink_at) {
         caret_on = !caret_on;
         blink_at = now() + kCaretBlink;
