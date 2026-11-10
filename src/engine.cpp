@@ -6,8 +6,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <condition_variable>
 #include <cstring>
+#include <deque>
 #include <limits>
+#include <mutex>
+#include <thread>
+#include <utility>
 
 namespace qui {
 
@@ -236,7 +241,7 @@ void Engine::decode(const uint8_t *wire, size_t len) {
         ImageSource &source = images[key];
         source.w = w;
         source.h = h;
-        source.rgba.assign(data.begin(), data.end());
+        source.rgba = std::make_shared<const std::vector<uint8_t>>(data.begin(), data.end());
         ++source.version;
       }
       continue;
@@ -1186,6 +1191,7 @@ void Engine::paint_text(const Node &node, float opacity, IRect clip, float dx, f
             const auto tint = std::min(255u, static_cast<uint32_t>(opacity * 255.f + 0.5f));
             const Instance instance{std::round(lo + (hi - lo - static_cast<float>(region.w)) / 2), std::round(y + (line_height - static_cast<float>(region.h)) / 2), static_cast<float>(region.w), static_cast<float>(region.h),
                                     std::round(region.region.u0 * page_w), std::round(region.region.v0 * page_h), 0, 0, 0x00ffffffu | (tint << 24), InstColorGlyph};
+            damage_image(region, instance);
             add_instance(instance, static_cast<int>(region.region.page), clip);
           }
           continue;
@@ -1443,6 +1449,7 @@ void Engine::paint_children(const Node &node, float opacity, IRect clip) {
 }
 
 void Engine::paint() {
+  drain_resamples();
   easing = false;
   scroll_parent_ = hit_parent_ = -1;
   round_clip_ = {};
@@ -1502,8 +1509,9 @@ IRect Engine::swap_and_damage() {
         damage = unite(damage, unite(a.rect, b.rect));
       }
     }
-    damage = intersect(damage, full);
+    damage = intersect(unite(damage, image_damage_), full);
   }
+  image_damage_ = {};
   std::swap(frame, previous);
   return damage;
 }
@@ -1654,6 +1662,110 @@ void resample(const std::vector<uint8_t> &src, uint32_t sw, uint32_t sh, CropRec
 
 }  // namespace
 
+struct Engine::Resampler {
+  struct Job {
+    uint64_t cache_key = 0, source = 0, version = 0;
+    std::shared_ptr<const std::vector<uint8_t>> rgba;
+    uint32_t sw = 0, sh = 0;
+    CropRect crop;
+    int dw = 0, dh = 0;
+    uint8_t sampling = 0;
+    std::vector<uint8_t> pixels;
+  };
+
+  std::mutex lock;
+  std::condition_variable wake;
+  std::deque<Job> todo;
+  std::vector<Job> done;
+  std::function<void()> notify;
+  bool stop = false;
+  std::thread worker;
+
+  explicit Resampler(std::function<void()> on_done) : notify(std::move(on_done)), worker([this] { run(); }) {}
+
+  ~Resampler() {
+    {
+      std::lock_guard guard(lock);
+      stop = true;
+    }
+    wake.notify_one();
+    worker.join();
+  }
+
+  void push(Job job) {
+    {
+      std::lock_guard guard(lock);
+      todo.push_back(std::move(job));
+    }
+    wake.notify_one();
+  }
+
+  std::vector<Job> take() {
+    std::lock_guard guard(lock);
+    return std::exchange(done, {});
+  }
+
+  void run() {
+    for (;;) {
+      Job job;
+      {
+        std::unique_lock guard(lock);
+        wake.wait(guard, [&] { return stop || !todo.empty(); });
+        if (stop) return;
+        job = std::move(todo.front());
+        todo.pop_front();
+      }
+      resample(*job.rgba, job.sw, job.sh, job.crop, job.dw, job.dh, job.sampling, job.pixels);
+      job.rgba.reset();
+      {
+        std::lock_guard guard(lock);
+        done.push_back(std::move(job));
+      }
+      if (notify) notify();
+    }
+  }
+};
+
+Engine::~Engine() = default;
+
+void Engine::drain_resamples() {
+  if (!resampler_) return;
+  for (Resampler::Job &job : resampler_->take()) {
+    const auto found = image_regions.find(job.cache_key);
+    if (found == image_regions.end()) continue;
+    ImageRegion &region = found->second;
+    region.in_flight = false;
+    const auto source = images.find(job.source);
+    if (source == images.end() || job.version > source->second.version) continue;
+    if (region.ok && region.source == job.source && region.version >= job.version) continue;
+    store_region(region, job.source, job.version, job.dw, job.dh, job.pixels);
+  }
+}
+
+void Engine::store_region(ImageRegion &region, uint64_t key, uint64_t version, int dw, int dh, const std::vector<uint8_t> &pixels) {
+  if (region.ok && (region.source != key || region.w != dw || region.h != dh)) {
+    fonts.release_rgba(region.region, region.alloc_w, region.alloc_h);
+    region.ok = false;
+  }
+  if (!region.ok) {
+    region.ok = fonts.allocate_rgba(static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), region.region, region.alloc_w, region.alloc_h);
+  }
+  region.source = key;
+  region.version = version;
+  region.last_used = frame_number;
+  region.written = frame_number;
+  region.w = dw;
+  region.h = dh;
+  if (region.ok) fonts.write_rgba(region.region, static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), pixels);
+}
+
+// Pixels rewritten in place keep the same instance, so the frame diff alone
+// would never repaint them.
+void Engine::damage_image(const ImageRegion &region, const Instance &instance) {
+  if (region.written != frame_number) return;
+  image_damage_ = unite(image_damage_, IRect{static_cast<int>(std::floor(instance.x)), static_cast<int>(std::floor(instance.y)), static_cast<int>(std::ceil(instance.w)) + 1, static_cast<int>(std::ceil(instance.h)) + 1});
+}
+
 const Engine::ImageRegion &Engine::image_region(const Node &node, int box_w, int box_h) {
   return image_region_for(node.image, node.fit, box_w, box_h);
 }
@@ -1684,23 +1796,21 @@ const Engine::ImageRegion &Engine::image_region_for(uint64_t key, uint8_t fit, i
     const float view_w = static_cast<float>(box_w) / scale, view_h = static_cast<float>(box_h) / scale;
     crop = {(sw - view_w) / 2, (sh - view_h) / 2, (sw + view_w) / 2, (sh + view_h) / 2};
   }
-  std::vector<uint8_t> pixels;
-  resample(img.rgba, img.w, img.h, crop, dw, dh, sampling, pixels);
 
+  constexpr uint64_t kSyncPixels = 160 * 160;
   ImageRegion &region = image_regions[cache_key];
-  if (region.ok && (region.source != key || region.w != dw || region.h != dh)) {
-    fonts.release_rgba(region.region, region.alloc_w, region.alloc_h);
-    region.ok = false;
-  }
-  if (!region.ok) {
-    region.ok = fonts.allocate_rgba(static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), region.region, region.alloc_w, region.alloc_h);
-  }
-  region.source = key;
-  region.version = img.version;
   region.last_used = frame_number;
-  region.w = dw;
-  region.h = dh;
-  if (region.ok) fonts.write_rgba(region.region, static_cast<uint32_t>(dw), static_cast<uint32_t>(dh), pixels);
+  if (async_images && static_cast<uint64_t>(img.w) * img.h > kSyncPixels) {
+    if (!region.in_flight) {
+      if (!resampler_) resampler_ = std::make_unique<Resampler>(on_async);
+      region.in_flight = true;
+      resampler_->push({cache_key, key, img.version, img.rgba, img.w, img.h, crop, dw, dh, sampling, {}});
+    }
+    return region;
+  }
+  std::vector<uint8_t> pixels;
+  resample(*img.rgba, img.w, img.h, crop, dw, dh, sampling, pixels);
+  store_region(region, key, img.version, dw, dh, pixels);
   return region;
 }
 
@@ -1774,6 +1884,7 @@ void Engine::paint_image(const Node &node, float x0, float y0, float w, float h,
   const Instance instance{std::round(dx), std::round(dy), static_cast<float>(region.w), static_cast<float>(region.h),
                           std::round(region.region.u0 * page_w), std::round(region.region.v0 * page_h), 0, 0,
                           0x00ffffffu | (tint << 24), InstColorGlyph};
+  damage_image(region, instance);
   const RoundClip outer = round_clip_;
   if (radius > 0) round_clip_ = {static_cast<int>(inner_x), static_cast<int>(inner_y), box_w, box_h, std::max(0.f, radius - std::round(node.pad[0] * dpr))};
   add_instance(instance, static_cast<int>(region.region.page), clip);

@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -275,6 +276,7 @@ struct Interaction {
 class Engine {
  public:
   Engine();
+  ~Engine();
 
   void decode(const uint8_t *wire, size_t len);
   void layout(float width, float height, float dpr);
@@ -326,17 +328,28 @@ class Engine {
   struct ImageSource {
     uint32_t w = 0, h = 0;
     uint64_t version = 0;
-    std::vector<uint8_t> rgba;
+    std::shared_ptr<const std::vector<uint8_t>> rgba;
   };
   struct ImageRegion {
     AtlasRegion region;
     int w = 0, h = 0;
     uint32_t alloc_w = 0, alloc_h = 0;
-    bool ok = false;
-    uint64_t source = 0, version = 0, last_used = 0;
+    bool ok = false, in_flight = false;
+    uint64_t source = 0, version = 0, last_used = 0, written = 0;
   };
   std::unordered_map<uint64_t, ImageSource> images;
   std::unordered_map<uint64_t, ImageRegion> image_regions;
+  // Large images are scaled on a worker thread instead of during paint; the
+  // last pixels keep showing until the new ones land, then on_async asks for
+  // a frame.
+  bool async_images = false;
+  std::function<void()> on_async;
+  struct Resampler;
+  std::unique_ptr<Resampler> resampler_;
+  IRect image_damage_{};
+  void drain_resamples();
+  void store_region(ImageRegion &region, uint64_t key, uint64_t version, int dw, int dh, const std::vector<uint8_t> &pixels);
+  void damage_image(const ImageRegion &region, const Instance &instance);
   const ImageRegion &image_region(const Node &node, int box_w, int box_h);
   const ImageRegion &image_region_for(uint64_t key, uint8_t fit, int box_w, int box_h);
   void evict_image_regions();

@@ -363,6 +363,12 @@ struct qui_app {
     tree_path = env("QUI_TREE");
     wire_path = env("QUI_WIRE");
     headless = !shot_path.empty() || !tree_path.empty() || !wire_path.empty();
+    engine.async_images = !headless;
+    engine.on_async = [] {
+      SDL_Event event{};
+      event.type = SDL_EVENT_USER;
+      SDL_PushEvent(&event);
+    };
     std::string requested = env("QUI_BACKEND");
     if (const std::string size = env("QUI_SIZE"); !size.empty()) std::sscanf(size.c_str(), "%dx%d", &width, &height);
     if (const std::string scale = env("QUI_DPR"); !scale.empty()) dpr = std::stof(scale);
