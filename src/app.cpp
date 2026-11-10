@@ -395,6 +395,7 @@ struct qui_app {
     }
 
     if (!g_app_id.empty()) SDL_SetAppMetadata(title, nullptr, g_app_id.c_str());
+    SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
     if (!SDL_Init(SDL_INIT_VIDEO)) {
