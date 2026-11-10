@@ -89,6 +89,8 @@ struct Style {
   // does. Fill sizes take the window's size, and the parent's clip and scroll
   // do not apply.
   bool fixed = false;
+  // Scrolls without drawing a scrollbar; the wheel, touch and keys still work.
+  bool no_scrollbar = false;
 };
 
 struct TextStyle {
@@ -1121,6 +1123,7 @@ class Ui {
     if (!s.hover_bg) s.hover_bg = b.hover_bg;
     s.drag |= b.drag;
     s.fixed |= b.fixed;
+    s.no_scrollbar |= b.no_scrollbar;
     if (!s.gradient.from && !s.gradient.to) s.gradient = b.gradient;
     if (!s.shadow.color) s.shadow = b.shadow;
     s.clip |= b.clip;
@@ -1179,6 +1182,7 @@ class Ui {
     }
     if (s.clip) u8(wire::OpClip);
     if (s.scroll) u8(wire::OpScroll);
+    if (s.no_scrollbar) u8(wire::OpNoScrollbar);
     if (s.scroll_to) f32_op(wire::OpScrollTo, *s.scroll_to);
     if (s.hit) u8_op(wire::OpHit, 1);
     if (s.select) u8(wire::OpSelect);

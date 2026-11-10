@@ -51,6 +51,7 @@ The stream starts with `Frame` and then holds nodes in pre-order. A node is
 | `HoverBg` | `color:u32`: the background while the pointer is over this box or any hit inside it, in place of a button's hover tint. On the web it is `:hover` |
 | `Drag` | none: a press on this box, outside the hit boxes inside it, moves the window. Native desktop only; it is for windows opened borderless (`qui_set_borderless`) |
 | `Fixed` | none: with `Pos`, the box is placed in window coordinates instead of its parent's; `Fill` takes the window's size, and the parent's clip and scroll do not apply |
+| `NoScrollbar` | none: a `Scroll` box or `Virtual` list scrolls without drawing a scrollbar or taking scrollbar drags. On the web it is `scrollbar-width: none` |
 | `Bare` | none, on an `Input` directly after `Open`: clears its default background and border, so a focused field shows no accent border |
 | `Label`, `Text`, `Src`, `Placeholder` | `str` |
 | `Virtual` | `count:u32 estimate:f32 bottom:u8` |

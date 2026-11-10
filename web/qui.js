@@ -215,6 +215,7 @@ function decode(bytes, length) {
       case Op.Glide: break;
       case Op.Drag: break;
       case Op.Fixed: node.fixed = true; node.absolute = true; break;
+      case Op.NoScrollbar: node.noScrollbar = true; break;
       case Op.Src: node.src = r.str(); break;
       case Op.Fps: node.fps = r.f32(); break;
       case Op.Placeholder: node.placeholder = r.str(); break;
@@ -341,6 +342,7 @@ function css(node, parent) {
   if (node.ease) s += `transition:${["background-color", "color", "border-color", "border-radius", "opacity", "box-shadow"].map((p) => `${p} ${node.ease}ms cubic-bezier(.33,1,.68,1)`).join(",")};`;
   if (node.clip) s += "overflow:hidden;";
   if (node.scroll) s += "overflow-y:auto;pointer-events:auto;";
+  if (node.noScrollbar) s += "scrollbar-width:none;";
   if (node.z) s += `z-index:${node.z};`;
   if (node.gestures) {
     const allowed = [!(node.gestures & Gesture.PanX) && "pan-x", !(node.gestures & Gesture.PanY) && "pan-y", !(node.gestures & Gesture.Pinch) && "pinch-zoom"];
